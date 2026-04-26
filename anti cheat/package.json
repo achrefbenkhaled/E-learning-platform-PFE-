@@ -1,0 +1,11 @@
+{
+  "name": "anti-cheat-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"node express-backend/server.js\" \"npm run dev --prefix react-frontend\"",
+    "start:api": "node express-backend/server.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

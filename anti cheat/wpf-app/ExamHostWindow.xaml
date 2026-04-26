@@ -1,0 +1,50 @@
+<Window x:Class="AntiCheatApp.ExamHostWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="Secure Exam"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowState="Maximized" Background="#0F172A"
+        Loaded="Window_Loaded" Closing="Window_Closing">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <wv2:WebView2 x:Name="ExamWebView" Grid.Row="0" Margin="0"/>
+
+        <!-- Camera Feed Top Right -->
+        <Border Grid.Row="0" CornerRadius="8" Background="#1E293B" BorderBrush="#334155" BorderThickness="1" 
+                Padding="8" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" 
+                Width="280" Height="210">
+            <Grid Background="#0F172A">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Camera Feed" Foreground="#94A3B8" FontSize="11" 
+                           FontWeight="Bold" Margin="0,0,0,6" TextAlignment="Center"/>
+
+                <Image x:Name="CameraImage" Grid.Row="1" Stretch="UniformToFill" 
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+
+                <!-- Loading indicator -->
+                <TextBlock x:Name="CameraStatus" Grid.Row="1" Text="Initializing..." 
+                          Foreground="#64748B" FontSize="11" VerticalAlignment="Center" 
+                          HorizontalAlignment="Center" TextAlignment="Center"/>
+            </Grid>
+        </Border>
+
+
+        <Border Grid.Row="1" Background="#1E293B" BorderBrush="#334155" BorderThickness="0,1,0,0" Padding="12,8">
+            <TextBlock Foreground="#94A3B8" FontSize="12" TextWrapping="Wrap" TextAlignment="Left">
+                Exam runs inside the anti-cheat shell. Alt+Tab, Alt+F4, Win keys, and most system shortcuts are blocked.
+                Camera runs at top-right. Be careful: keep your computer centered and avoid looking away.
+                Press <Run FontWeight="Bold" Foreground="#3B82F6">Ctrl+Shift+Q</Run> to finish early.
+            </TextBlock>
+        </Border>
+    </Grid>
+</Window>

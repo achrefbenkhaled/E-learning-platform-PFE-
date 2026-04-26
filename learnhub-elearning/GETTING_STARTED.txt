@@ -1,0 +1,80 @@
+================================================================================
+  E-LEARNING PLATFORM MVP - PHASE 1: AUTHENTICATION
+  Getting Started Checklist
+================================================================================
+
+1. MONGODB SETUP
+   ☐ Install MongoDB locally OR
+   ☐ Create MongoDB Atlas account (free tier)
+   ☐ Update backend/.env with connection string
+
+2. INSTALL DEPENDENCIES
+   ☐ cd backend && npm install
+   ☐ cd ../frontend && npm install
+
+3. START SERVERS
+   ☐ Terminal 1: cd backend && npm run dev
+   ☐ Terminal 2: cd frontend && npm run dev
+   ☐ Wait for "✓ Server running on http://localhost:5000"
+   ☐ Wait for "VITE" message (frontend should auto-open)
+
+4. TEST AUTH FLOW
+   ☐ Open http://localhost:5173
+   ☐ Click "Sign up"
+   ☐ Fill in: firstName, lastName, email, password
+   ☐ Should auto-redirect to dashboard
+   ☐ Click logout
+   ☐ Login with same credentials
+   ☐ Should be back on dashboard
+   ☐ Refresh page - should stay logged in
+
+5. VERIFY API CALLS (DevTools)
+   ☐ Open DevTools (F12)
+   ☐ Network tab: Check POST /api/auth/register
+   ☐ Network tab: Check POST /api/auth/login
+   ☐ Application > LocalStorage: See accessToken & refreshToken
+
+6. YOU'RE DONE WITH PHASE 1!
+   ☐ Commit to git (optional)
+   ☐ Read PHASE1_COMPLETE.md for summary
+   ☐ Review ARCHITECTURE.md for Phase 2 plan
+
+================================================================================
+
+QUICK REFERENCE
+
+Files You'll Actually Edit:
+  - backend/models/ → Add new data models
+  - backend/routes/ → Add new API endpoints
+  - backend/controllers/ → Add business logic
+  - frontend/src/pages/ → Add new pages
+  - frontend/src/components/ → Add reusable components
+  - frontend/src/styles/globals.css → Global CSS
+  - Everything uses Tailwind classes in JSX
+
+Important Passwords/Secrets:
+  - backend/.env contains JWT secrets
+  - Change these before deploying!
+
+Troubleshooting:
+  - MongoDB not found? Install from mongodb.com or use Atlas
+  - Port 5000 in use? Change PORT in backend/.env
+  - Port 5173 in use? Change port in frontend/vite.config.js
+  - CORS error? Check backend/server.js CORS config
+  - Token not working? Check JWT_ACCESS_SECRET in backend/.env
+
+================================================================================
+
+NEXT PHASE (When Ready):
+
+Phase 2: Course Management
+  - Add Course model
+  - Add Session model
+  - Add Enrollment model
+  - Create course CRUD endpoints
+  - Build course listing & detail pages
+  - Implement enrollment flow
+
+Just say "Start Phase 2" when you're ready!
+
+================================================================================
