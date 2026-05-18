@@ -1,0 +1,272 @@
+@startuml Diagramme_de_Classe_LearnHub
+
+skinparam classAttributeIconSize 0
+skinparam defaultFontName Arial
+skinparam shadowing false
+skinparam linetype ortho
+skinparam nodesep 80
+skinparam ranksep 70
+
+skinparam class {
+  BackgroundColor white
+  BorderColor black
+  ArrowColor black
+}
+
+title LearnHub - E-Learning Class Diagram
+
+' ================= USERS =================
+class User {
+  +id : ObjectId
+  +email : String
+  +firstName : String
+  +lastName : String
+  +avatar : String
+  +roles : String[] {student, instructor, admin}
+  +isVerified : Boolean
+  +isActive : Boolean
+  --
+  +register()
+  +login()
+  +googleLogin()
+  +logout()
+  +getProfile()
+  +updateProfile()
+  +getPublicProfile()
+  +searchUsers()
+  +comparePassword()
+}
+
+class InstructorRequest {
+  +id : ObjectId
+  +name : String
+  +email : String
+  +reason : String
+  +experience : String
+  +idCard : String
+  +cv : String
+  +diploma : String
+  +status : {pending, approved, rejected}
+  --
+  +createRequest()
+  +getMyRequest()
+  +getAllRequests()
+  +updateRequestStatus()
+}
+
+class Notification {
+  +id : ObjectId
+  +type : {enrollment, message, like, comment, system, course_update}
+  +title : String
+  +message : String
+  +link : String
+  +read : Boolean
+  --
+  +getNotifications()
+  +markAsRead()
+  +createNotification()
+}
+
+' ================= COURSE =================
+class Course {
+  +id : ObjectId
+  +title : String
+  +description : String
+  +categories : String[]
+  +price : Number
+  +status : {draft, published, archived}
+  +level : {beginner, intermediate, advanced}
+  +type : {standard, classroom}
+  +classCode : String
+  +rating : Number
+  +totalEnrollments : Number
+  --
+  +getCourses()
+  +getCourseDetail()
+  +createCourse()
+  +updateCourse()
+  +deleteCourse()
+  +getMyCourses()
+  +addReview()
+}
+
+class Session {
+  +id : ObjectId
+  +title : String
+  +description : String
+  +videoUrl : String
+  +pdfUrl : String
+  +order : Number
+  +duration : Number
+  +isPublished : Boolean
+  --
+  +createSession()
+  +updateSession()
+  +deleteSession()
+  +completeSession()
+}
+
+class Enrollment {
+  +id : ObjectId
+  +enrollmentDate : Date
+  +progress : Number
+  +status : {active, completed, paused}
+  +isBlocked : Boolean
+  +certificateEarned : Boolean
+  --
+  +enrollCourse()
+  +unenrollCourse()
+  +joinClassByCode()
+  +processCheckout()
+  +getEnrolledCourses()
+  +getProgress()
+  +getCourseStudents()
+  +toggleBlockStudent()
+}
+
+' ================= TEST =================
+class Test {
+  +id : ObjectId
+  +title : String
+  +description : String
+  +type : {quiz, final}
+  +status : {draft, published, archived}
+  +totalAttempts : Number
+  --
+  +getTests()
+  +getTest()
+  +createTest()
+  +updateTest()
+  +deleteTest()
+  +getMyTests()
+  +getCourseTests()
+  +generateTestAI()
+}
+
+class Question {
+  <<embedded>>
+  +id : ObjectId
+  +question : String
+  +type : {multiple-choice, short-answer, essay, file-response}
+  +options : String[]
+  +correctAnswer : String
+  +points : Number
+}
+
+class TestAttempt {
+  +id : ObjectId
+  +score : Number
+  +totalPoints : Number
+  +percentage : Number
+  +passed : Boolean
+  +timeTaken : Number
+  +startedAt : Date
+  +submittedAt : Date
+  +status : {in-progress, submitted, completed, graded}
+  --
+  +startTest()
+  +submitAnswer()
+  +submitTest()
+  +getAttempt()
+  +getMyAttempts()
+  +getTestAttempts()
+}
+
+' ================= COMMUNITY =================
+class CommunityPost {
+  +id : ObjectId
+  +title : String
+  +content : String
+  +category : {announcement, discussion, question, resource}
+  +tags : String[]
+  +views : Number
+  +isPinned : Boolean
+  --
+  +getPosts()
+  +getPost()
+  +createPost()
+  +updatePost()
+  +deletePost()
+  +likePost()
+}
+
+class Comment {
+  <<embedded>>
+  +id : ObjectId
+  +content : String
+  --
+  +addComment()
+  +deleteComment()
+}
+
+class ChatMessage {
+  +id : ObjectId
+  +content : String
+  +roomId : String
+  +attachmentUrl : String
+  +isDeleted : Boolean
+  --
+  +getMessages()
+  +getRooms()
+  +markRoomAsRead()
+}
+
+class Report {
+  +id : ObjectId
+  +contentType : {user, post, comment, chat, course}
+  +contentId : ObjectId
+  +reason : {Harassment, Spam, Inappropriate Content, Hate Speech, Other}
+  +description : String
+  +status : {pending, resolved, dismissed}
+  +adminNotes : String
+  --
+  +createReport()
+  +getReports()
+  +updateReportStatus()
+}
+
+' ================= RELATIONS =================
+
+'' User creates courses (Course.instructor -> User)
+User "1" <-- "0..*" Course : instructor
+
+'' Enrollment links User <-> Course (N:M)
+User "1" <-- "0..*" Enrollment
+Course "1" <-- "0..*" Enrollment
+
+'' Course contains sessions
+Course "1" <-- "0..*" Session : courseId
+
+'' Course has an optional final test
+Course "1" -- "0..1" Test : finalTestId
+
+'' Session has an optional quiz
+Session "1" -- "0..1" Test : testId
+
+'' Test created by instructor
+User "1" <-- "0..*" Test : createdBy
+
+'' Test contains embedded questions
+Test "1" *-- "1..*" Question
+
+'' TestAttempt links User <-> Test
+Test "1" <-- "0..*" TestAttempt : testId
+User "1" <-- "0..*" TestAttempt : userId
+
+'' Community
+User "1" <-- "0..*" CommunityPost : authorId
+CommunityPost "1" *-- "0..*" Comment
+User "1" <-- "0..*" Comment : authorId
+
+'' Chat & notifications
+User "1" <-- "0..*" ChatMessage : senderId
+User "1" <-- "0..*" Notification : userId
+
+'' Reports (reporter + reported user)
+User "1" <-- "0..*" Report : reporter
+User "1" <-- "0..*" Report : reportedUser
+
+'' Instructor requests
+User "1" <-- "0..*" InstructorRequest : userId
+
+@enduml

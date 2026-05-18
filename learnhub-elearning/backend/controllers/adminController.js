@@ -3,6 +3,7 @@ import Course from '../models/Course.js';
 import { CommunityPost } from '../models/Community.js';
 import { Test } from '../models/Test.js';
 import Enrollment from '../models/Enrollment.js';
+import Report from '../models/Report.js';
 
 export const getUsers = async (req, res) => {
   try {
@@ -34,7 +35,13 @@ export const updateUser = async (req, res) => {
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    if (roles) user.roles = roles;
+    if (roles) {
+      if (roles.includes('admin')) {
+        user.roles = ['admin'];
+      } else {
+        user.roles = roles;
+      }
+    }
     if (isActive !== undefined) user.isActive = isActive;
 
     await user.save();
@@ -194,8 +201,10 @@ export const getStats = async (req, res) => {
     const totalEnrollments = await Enrollment.countDocuments();
     const totalPosts = await CommunityPost.countDocuments();
     const totalTests = await Test.countDocuments();
+    const pendingReports = await Report.countDocuments({ status: 'pending' });
 
     const instructors = await User.countDocuments({ roles: 'instructor' });
+    const totalStudents = await User.countDocuments({ roles: 'student' });
     const activeCourses = await Course.countDocuments({ status: 'published' });
     const completedCourses = await Enrollment.countDocuments({ status: 'completed' });
 
@@ -205,7 +214,9 @@ export const getStats = async (req, res) => {
       totalEnrollments,
       totalPosts,
       totalTests,
+      pendingReports,
       instructors,
+      totalStudents,
       activeCourses,
       completedCourses,
     });

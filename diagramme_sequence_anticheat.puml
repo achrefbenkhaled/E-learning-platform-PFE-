@@ -1,0 +1,121 @@
+@startuml Sequence_AntiCheat_Exam
+
+skinparam defaultFontName Arial
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 200
+
+skinparam participant {
+  BackgroundColor white
+  BorderColor black
+}
+
+skinparam note {
+  BackgroundColor #FFFFCC
+  BorderColor #999999
+}
+
+title Diagramme de Séquence — Examen avec Anti-Cheat
+
+actor Étudiant as S
+participant "Frontend\n(React)" as FE
+participant "Backend\n(Node.js)" as BE
+participant "WPF App\n(Anti-Cheat)" as WPF
+participant "Scanner\nEnvironnement" as SC
+participant "Proctor\n(Python/Caméra)" as CAM
+database "MongoDB" as DB
+
+== 1. Démarrage du test Anti-Cheat ==
+
+S -> FE : Cliquer "Passer le test"
+FE -> BE : POST /api/tests/start {testId}
+BE -> DB : Vérifier enrollment & isBlocked
+DB --> BE : OK
+BE -> DB : Créer TestAttempt (status: in-progress)
+DB --> BE : attemptId, sessionId
+BE --> FE : {attemptId, requireAntiCheat: true}
+
+FE -> FE : Afficher page "Lancer Anti-Cheat"
+note right of FE : Le frontend demande\nà l'étudiant de lancer\nl'application WPF
+
+== 2. Activation Anti-Cheat (WPF) ==
+
+S -> WPF : Activer le toggle Anti-Cheat
+WPF -> SC : Run() — Scanner l'environnement
+SC -> SC : Vérifier processus interdits\n(Discord, OBS, TeamViewer...)
+SC -> SC : Vérifier bureau distant
+SC -> SC : Vérifier multi-écrans
+SC --> WPF : ScanResult {passed, issues[]}
+
+alt Scan échoué
+  WPF -> WPF : Phase = Violation
+  WPF -> WPF : ViolationProcessTerminator.KillTargets()
+  WPF --> S : Afficher violations détectées
+else Scan réussi
+  WPF -> BE : POST /api/anticheat/start
+  BE --> WPF : {token}
+  WPF -> WPF : Phase = Protected
+  WPF -> WPF : Démarrer heartbeat (3s)
+  WPF -> WPF : Démarrer polling pending (1s)
+end
+
+== 3. Lancement de l'examen sécurisé ==
+
+FE -> BE : POST /api/anticheat/request-exam-start\n{token, testId, accessToken}
+BE -> BE : Stocker requête pending
+
+WPF -> BE : GET /api/anticheat/exam-start-pending (polling)
+BE --> WPF : {pending: true, testId, token, accessToken}
+
+WPF -> WPF : Ouvrir ExamHostWindow (fullscreen)
+note right of WPF : Verrouillage système :\n• Bloquer Alt+Tab, Win, Esc\n• Désactiver TaskMgr\n• Capturer la souris\n• Muet audio autres apps
+
+WPF -> WPF : Charger React dans WebView2
+WPF --> S : Afficher le test en plein écran
+
+== 4. Surveillance caméra (Proctor) ==
+
+FE -> WPF : postMessage("START_PROCTOR")
+WPF -> CAM : Lancer main.py (Python)
+CAM -> CAM : Ouvrir webcam
+CAM -> CAM : Détecter visages / téléphones\nvia OpenCV + YOLO
+WPF -> CAM : GET /video_feed (frames MJPEG)
+CAM --> WPF : Flux vidéo caméra
+WPF -> WPF : Afficher miniature caméra
+
+== 5. Heartbeat continu ==
+
+loop Chaque 3 secondes
+  WPF -> SC : Run() — Re-scanner
+  SC --> WPF : {passed, issues[]}
+  WPF -> BE : POST /api/anticheat/heartbeat\n{token, checksPassed, messages[]}
+  BE --> WPF : 200 OK
+end
+
+== 6. Soumission du test ==
+
+S -> FE : Répondre aux questions
+S -> FE : Cliquer "Soumettre"
+FE -> BE : POST /api/tests/submit\n{attemptId, answers}
+BE -> BE : Corriger QCM automatiquement
+BE -> BE : Évaluer réponses courtes (IA)
+BE -> DB : Sauvegarder score, passed, %
+DB --> BE : OK
+BE --> FE : {score, percentage, passed}
+
+FE -> WPF : postMessage("QUIT_EXAM")
+WPF -> CAM : Arrêter main.py (stop flag)
+CAM -> CAM : Générer summary.json
+CAM --> WPF : Résumé proctoring
+
+WPF -> BE : POST /api/proctor/report\n{proctoringData, summary}
+BE -> DB : Mettre à jour TestAttempt.proctoringData
+DB --> BE : OK
+
+WPF -> WPF : Restaurer système\n(clavier, registre, audio)
+WPF -> WPF : Fermer ExamHostWindow
+
+FE --> S : Afficher résultats
+
+@enduml

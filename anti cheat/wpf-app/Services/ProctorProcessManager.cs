@@ -22,6 +22,19 @@ namespace AntiCheatApp.Services
         private static readonly StringBuilder _proctorStdErr = new();
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
 
+        public static async Task<bool> CheckProctorInitializedAsync()
+        {
+            try
+            {
+                using var response = await Http.GetAsync("http://127.0.0.1:5050/status");
+                if (!response.IsSuccessStatusCode) return false;
+                var json = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
+                return doc.RootElement.TryGetProperty("initialized", out var init) && init.GetBoolean();
+            }
+            catch { return false; }
+        }
+
         public static string? StartProctor()
         {
             try
@@ -165,7 +178,7 @@ namespace AntiCheatApp.Services
 
                 if (_proctorProcess != null && !_proctorProcess.HasExited)
                 {
-                    if (!_proctorProcess.WaitForExit(10000))
+                    if (!_proctorProcess.WaitForExit(1000))
                     {
                         _proctorProcess.Kill(true);
                     }

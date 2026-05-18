@@ -3,10 +3,11 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { gsap } from 'gsap';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, CheckCircle, Play,
-  FileText, Video, Download, Trophy
+  FileText, Video, Download, Trophy, Lock, ClipboardList, Shield, ShieldAlert
 } from 'lucide-react';
 import api from '../../utils/api.js';
 import useAuth from '../../hooks/useAuth.js';
+import ReportModal from '../../components/modals/ReportModal.jsx';
 
 /**
  * Converts a video URL to an embeddable format.
@@ -32,10 +33,13 @@ const SessionPlayer = () => {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isStudent = user?.roles?.includes('student');
+  const isAdmin = user?.roles?.includes('admin');
 
   const [course, setCourse] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [currentSession, setCurrentSession] = useState(null);
+  const [enrollment, setEnrollment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [completing, setCompleting] = useState(false);
@@ -43,6 +47,7 @@ const SessionPlayer = () => {
   const [progress, setProgress] = useState(0);
   const [slideDir, setSlideDir] = useState('');
   const [showCongrats, setShowCongrats] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
   const congratsRef = useRef(null);
 
   const fetchCourse = useCallback(async () => {
@@ -53,6 +58,7 @@ const SessionPlayer = () => {
       const { course: courseData, sessions: sessionData, enrollment: enrollmentData } = res.data;
       const data = courseData || res.data;
       setCourse(data);
+      setEnrollment(enrollmentData);
 
       const sortedSessions = (sessionData || []).sort(
         (a, b) => (a.order || 0) - (b.order || 0)
@@ -60,23 +66,40 @@ const SessionPlayer = () => {
       setSessions(sortedSessions);
 
       const current = sortedSessions.find((s) => s._id === sessionId) || sortedSessions[0];
-      setCurrentSession(current);
+      
+      // Enforce gating: if the current session is locked, redirect away (unless Admin)
+      if (current?.isLocked && !isAdmin) {
+        navigate(`/courses/${courseId}`, { state: { error: 'This session is locked until you pass the prerequisite tests.' } });
+        return;
+      }
 
+      setCurrentSession(current);
       setProgress(enrollmentData?.progress || 0);
       const completed = (enrollmentData?.completedSessions || []).map((s) =>
         typeof s === 'string' ? s : s._id
       );
       setCompletedSessions(new Set(completed));
+
+      if (enrollmentData?.isBlocked && !isAdmin) {
+        setError('Your access to this course has been restricted by the instructor.');
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load session');
     } finally {
       setLoading(false);
     }
-  }, [courseId, sessionId]);
+  }, [courseId, sessionId, isAdmin]);
 
   useEffect(() => {
     fetchCourse();
   }, [fetchCourse]);
+
+  // Role check
+  useEffect(() => {
+    if (user && !isStudent && !isAdmin) {
+      setError('Only students and administrators can access course content.');
+    }
+  }, [user, isStudent, isAdmin]);
 
   // When sessionId changes in URL, update the current session
   useEffect(() => {
@@ -127,6 +150,7 @@ const SessionPlayer = () => {
   const nextSession = currentIndex < sessions.length - 1 ? sessions[currentIndex + 1] : null;
 
   const navigateSession = (session, direction) => {
+    if (session.isLocked) return; // Prevent navigation to locked sessions
     setSlideDir(direction === 'next' ? 'slide-left' : 'slide-right');
     setTimeout(() => {
       navigate(`/courses/${courseId}/sessions/${session._id}`);
@@ -135,6 +159,10 @@ const SessionPlayer = () => {
   };
 
   const handleMarkComplete = async () => {
+    if (isStudent && enrollment?.isBlocked) {
+      setError('Your access to this course is restricted.');
+      return;
+    }
     setCompleting(true);
     try {
       await api.post(`/api/courses/${courseId}/sessions/${currentSession._id}/complete`);
@@ -265,9 +293,18 @@ const SessionPlayer = () => {
 
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
                   <div>
-                    <h2 className="text-xl font-black text-txt mb-1">
-                      {currentSession?.title}
-                    </h2>
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl font-black text-txt mb-1">
+                        {currentSession?.title}
+                      </h2>
+                      <button
+                        onClick={() => setShowReportModal(true)}
+                        className="p-1.5 rounded-lg text-txt-muted hover:text-red-400 hover:bg-red-400/5 transition-all"
+                        title="Report this session/course"
+                      >
+                        <ShieldAlert className="w-4 h-4" />
+                      </button>
+                    </div>
                     {currentSession?.description && (
                       <p className="text-txt-muted mt-2">{currentSession.description}</p>
                     )}
@@ -283,6 +320,16 @@ const SessionPlayer = () => {
                         <Download className="w-4 h-4" />
                         View PDF
                       </a>
+                    )}
+
+                    {currentSession?.testId && (
+                      <Link
+                        to={`/tests/${currentSession.testId}/take`}
+                        className="btn-secondary flex items-center gap-2 text-sm bg-blue-400/10 border-blue-400/30 text-blue-400 hover:bg-blue-400/20"
+                      >
+                        <FileText className="w-4 h-4" />
+                        Take Session Test
+                      </Link>
                     )}
 
                     {isCurrentCompleted ? (
@@ -317,7 +364,10 @@ const SessionPlayer = () => {
                       <ChevronLeft className="w-5 h-5" />
                       <div className="text-left">
                         <p className="text-xs text-txt-muted">Previous</p>
-                        <p className="text-sm font-semibold group-hover:text-yellow-400 transition-colors">{prevSession.title}</p>
+                        <p className={`text-sm font-semibold transition-colors ${prevSession.isLocked ? 'text-txt-muted opacity-50' : 'group-hover:text-yellow-400'}`}>
+                          {prevSession.title}
+                          {prevSession.isLocked && <Lock className="w-3 h-3 inline ml-1" />}
+                        </p>
                       </div>
                     </button>
                   ) : (
@@ -331,10 +381,34 @@ const SessionPlayer = () => {
                     >
                       <div>
                         <p className="text-xs text-txt-muted">Next</p>
-                        <p className="text-sm font-semibold group-hover:text-yellow-400 transition-colors">{nextSession.title}</p>
+                        <p className={`text-sm font-semibold transition-colors ${nextSession.isLocked ? 'text-txt-muted opacity-50' : 'group-hover:text-yellow-400'}`}>
+                          {nextSession.isLocked && <Lock className="w-3 h-3 inline mr-1" />}
+                          {nextSession.title}
+                        </p>
                       </div>
                       <ChevronRight className="w-5 h-5" />
                     </button>
+                  ) : course?.finalTestId ? (
+                    <Link
+                      to={`/tests/${course.finalTestId?._id || course.finalTestId}/take`}
+                      className={`flex items-center gap-3 transition-colors text-right group ${
+                        sessions.every(s => completedSessions.has(s._id))
+                          ? 'text-pink-500 hover:text-pink-400'
+                          : 'text-txt-muted opacity-50 cursor-not-allowed'
+                      }`}
+                      onClick={(e) => !sessions.every(s => completedSessions.has(s._id)) && e.preventDefault()}
+                    >
+                      <div>
+                        <p className="text-xs text-txt-muted">Next</p>
+                        <p className="text-sm font-black tracking-tight flex items-center gap-1.5 justify-end">
+                          {!sessions.every(s => completedSessions.has(s._id)) && <Lock className="w-3 h-3" />}
+                          Final Assessment
+                        </p>
+                      </div>
+                      <div className="w-10 h-10 rounded-xl bg-pink-500/10 flex items-center justify-center text-pink-500 group-hover:bg-pink-500/20 transition-colors">
+                        <ChevronRight className="w-5 h-5" />
+                      </div>
+                    </Link>
                   ) : (
                     <div />
                   )}
@@ -379,6 +453,8 @@ const SessionPlayer = () => {
                     className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold border ${
                       isCompleted
                         ? 'bg-green-400/10 text-green-400 border-green-400/20'
+                        : session.isLocked
+                        ? 'bg-gray-400/5 text-gray-400/50 border-gray-400/10'
                         : isActive
                         ? 'bg-yellow-400/10 text-yellow-400 border-yellow-400/20'
                         : 'bg-surface text-txt-muted border-bdr'
@@ -393,22 +469,85 @@ const SessionPlayer = () => {
                   <div className="min-w-0 flex-1">
                     <p
                       className={`text-sm font-medium truncate ${
-                        isActive ? 'text-yellow-400' : 'text-txt-secondary'
+                        session.isLocked ? 'text-txt-muted' : isActive ? 'text-yellow-400' : 'text-txt-secondary'
                       }`}
                     >
                       {session.title}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      {session.duration && (
-                        <p className="text-xs text-txt-muted">{session.duration}</p>
+                      {session.isLocked ? (
+                        <p className="text-[10px] text-red-400/60 font-bold uppercase flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" /> Locked (Prerequisite)
+                        </p>
+                      ) : (
+                        <>
+                          {session.duration && (
+                            <p className="text-xs text-txt-muted">{session.duration}</p>
+                          )}
+                          {session.videoUrl && <Play className="w-3 h-3 text-txt-muted" />}
+                          {session.pdfUrl && <FileText className="w-3 h-3 text-txt-muted" />}
+                          {session.testId && <ClipboardList className="w-3 h-3 text-blue-400" />}
+                        </>
                       )}
-                      {session.videoUrl && <Play className="w-3 h-3 text-txt-muted" />}
-                      {session.pdfUrl && <FileText className="w-3 h-3 text-txt-muted" />}
                     </div>
                   </div>
                 </button>
               );
             })}
+
+            {/* Integrated Final Exam in Sidebar */}
+            {course?.finalTestId && (
+              (() => {
+                const allSessionsCompleted = sessions.length > 0 && sessions.every(s => completedSessions.has(s._id));
+                const isExamLocked = !allSessionsCompleted;
+                
+                return (
+                  <button
+                    onClick={() => {
+                      if (!isExamLocked) {
+                        navigate(`/tests/${course.finalTestId?._id || course.finalTestId}/take`);
+                      }
+                    }}
+                    className={`w-full flex items-center gap-3 p-4 text-left transition-colors border-t border-pink-500/10 ${
+                      isExamLocked 
+                        ? 'opacity-50 cursor-not-allowed' 
+                        : 'bg-pink-500/5 hover:bg-pink-500/10'
+                    }`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold border ${
+                        enrollment?.status === 'completed'
+                          ? 'bg-green-400/10 text-green-400 border-green-400/20'
+                          : 'bg-pink-500/10 text-pink-500 border-pink-500/20'
+                      }`}
+                    >
+                      {enrollment?.status === 'completed' ? (
+                        <CheckCircle className="w-4 h-4" />
+                      ) : (
+                        <ClipboardList className="w-4 h-4" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-bold text-txt truncate">Final Assessment</p>
+                        <span className="px-1 py-0.5 rounded bg-pink-500 text-white text-[8px] font-black uppercase">Secure</span>
+                      </div>
+                      <p className="text-[10px] font-bold mt-0.5">
+                        {isExamLocked ? (
+                          <span className="text-txt-muted flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5" /> Finish all sessions
+                          </span>
+                        ) : enrollment?.status === 'completed' ? (
+                          <span className="text-green-400">PASSED</span>
+                        ) : (
+                          <span className="text-pink-500 uppercase tracking-tight">Ready to Start</span>
+                        )}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })()
+            )}
           </div>
         </div>
       </div>
@@ -441,13 +580,43 @@ const SessionPlayer = () => {
             </div>
             <div className="congrats-text">
               <h2 className="text-4xl font-black text-white mb-2">Congratulations!</h2>
-              <p className="text-xl text-yellow-400 font-bold mb-2">Course Completed</p>
-              <p className="text-txt-muted">You finished all {sessions.length} sessions</p>
-              <p className="text-sm text-txt-muted mt-4">Click anywhere to close</p>
+              <p className="text-xl text-yellow-400 font-bold mb-2">Course Content Completed</p>
+              <p className="text-txt-muted mb-6">You've finished all {sessions.length} sessions!</p>
+              
+              {course?.finalTestId ? (
+                <div className="flex flex-col items-center gap-4">
+                  <p className="text-white/80 text-sm max-w-xs mx-auto">
+                    To fully complete the course and receive validation, you must pass the <strong>Final Exam</strong>.
+                  </p>
+                  <Link 
+                    to={`/tests/${course.finalTestId?._id || course.finalTestId}/take`}
+                    className="btn-primary bg-pink-500 text-white border-pink-600 hover:bg-pink-600 shadow-[0_4px_0_0_#db2777] active:shadow-none active:translate-y-1 px-8 py-3"
+                  >
+                    Take Final Exam Now
+                  </Link>
+                  <button onClick={() => setShowCongrats(false)} className="text-xs text-white/40 hover:text-white underline mt-2">
+                    I'll do it later
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-txt-muted">You finished all {sessions.length} sessions</p>
+                  <p className="text-sm text-txt-muted mt-4">Click anywhere to close</p>
+                </>
+              )}
             </div>
           </div>
         </div>
       )}
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        contentType="course"
+        contentId={courseId}
+        reportedUser={course?.instructor?._id || course?.instructor}
+        contentSnapshot={`Course: ${course?.title} | Session: ${currentSession?.title}`}
+      />
     </div>
   );
 };

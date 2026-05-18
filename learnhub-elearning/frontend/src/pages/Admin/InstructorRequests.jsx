@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Check, X, User, Mail, Calendar, MessageSquare, Briefcase, ExternalLink, Filter } from 'lucide-react';
+import { Check, X, User, Mail, Calendar, MessageSquare, Briefcase, ExternalLink, Filter, FileText } from 'lucide-react';
 import api from '../../utils/api.js';
 import { formatDate } from '../../utils/helpers.js';
 
@@ -132,13 +132,39 @@ const InstructorRequests = () => {
                       {request.experience && (
                         <div>
                           <h4 className="text-xs font-black text-txt-muted uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                            <Briefcase className="w-3.5 h-3.5" /> Experience / CV
+                            <Briefcase className="w-3.5 h-3.5" /> Experience
                           </h4>
                           <p className="text-txt-secondary text-sm bg-surface p-4 rounded-2xl border border-bdr/50">
                             {request.experience}
                           </p>
                         </div>
                       )}
+
+                      {/* Documents */}
+                      <div className="pt-2">
+                        <h4 className="text-xs font-black text-txt-muted uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5" /> Verification Documents
+                        </h4>
+                        <div className="flex flex-wrap gap-3">
+                          {[
+                            { label: "ID Card", key: "idCard" },
+                            { label: "CV", key: "cv" },
+                            { label: "Diploma", key: "diploma" }
+                          ].map((doc) => (
+                            <a
+                              key={doc.key}
+                              href={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/uploads/documents/${request[doc.key]}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 px-4 py-2 bg-surface-hover border border-bdr rounded-xl text-xs font-bold text-txt hover:border-yellow-400/50 transition-all group/doc"
+                            >
+                              <FileText className="w-4 h-4 text-txt-muted group-hover/doc:text-yellow-400" />
+                              {doc.label}
+                              <ExternalLink className="w-3 h-3 text-txt-muted opacity-0 group-hover/doc:opacity-100 transition-all" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
                     </div>
 
                     {/* Actions */}

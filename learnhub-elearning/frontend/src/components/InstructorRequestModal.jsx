@@ -9,6 +9,11 @@ const InstructorRequestModal = ({ isOpen, onClose, user }) => {
     reason: '',
     experience: '',
   });
+  const [files, setFiles] = useState({
+    idCard: null,
+    cv: null,
+    diploma: null,
+  });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
@@ -18,16 +23,40 @@ const InstructorRequestModal = ({ isOpen, onClose, user }) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleFileChange = (e) => {
+    const { name, files: uploadedFiles } = e.target;
+    setFiles((prev) => ({ ...prev, [name]: uploadedFiles[0] }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+
+    if (!files.idCard || !files.cv || !files.diploma) {
+      setError('Please upload all required documents');
+      setLoading(false);
+      return;
+    }
+
+    const data = new FormData();
+    data.append('name', formData.name);
+    data.append('email', formData.email);
+    data.append('reason', formData.reason);
+    data.append('experience', formData.experience);
+    data.append('idCard', files.idCard);
+    data.append('cv', files.cv);
+    data.append('diploma', files.diploma);
+
     try {
-      await api.post('/api/instructor-requests', formData);
+      await api.post('/api/instructor-requests', data, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
       setSuccess(true);
       setTimeout(() => {
         onClose();
-        // Optionally refresh page or state
         window.location.reload(); 
       }, 2000);
     } catch (err) {
@@ -126,6 +155,42 @@ const InstructorRequestModal = ({ isOpen, onClose, user }) => {
                   className="input-field resize-none"
                   placeholder="Tell us about your teaching experience or share a portfolio link"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 bg-surface p-4 rounded-xl border border-bdr">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-txt-muted uppercase tracking-wider ml-1">Carte d'Identité (ID Card)</label>
+                  <input
+                    type="file"
+                    name="idCard"
+                    onChange={handleFileChange}
+                    required
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    className="block w-full text-sm text-txt-muted file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-primary file:text-white hover:file:bg-primary-hover transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-txt-muted uppercase tracking-wider ml-1">Curriculum Vitae (CV)</label>
+                  <input
+                    type="file"
+                    name="cv"
+                    onChange={handleFileChange}
+                    required
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    className="block w-full text-sm text-txt-muted file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-primary file:text-white hover:file:bg-primary-hover transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-txt-muted uppercase tracking-wider ml-1">Diplôme (Diploma)</label>
+                  <input
+                    type="file"
+                    name="diploma"
+                    onChange={handleFileChange}
+                    required
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    className="block w-full text-sm text-txt-muted file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-primary file:text-white hover:file:bg-primary-hover transition-all"
+                  />
+                </div>
               </div>
 
               <div className="pt-4 flex gap-3">

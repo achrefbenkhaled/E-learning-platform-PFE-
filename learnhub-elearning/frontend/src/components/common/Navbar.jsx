@@ -94,18 +94,18 @@ const Navbar = ({ user, onLogout }) => {
         {/* Left: Logo + Hamburger */}
         <div className="flex items-center gap-3">
           <button
-            className="lg:hidden p-2 rounded-xl text-txt-secondary hover:text-yellow-400 hover:bg-yellow-400/10 transition-all"
+            className="lg:hidden p-2 rounded-xl text-txt-secondary hover:text-indigo-500 hover:bg-indigo-500/10 transition-all"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
 
           <Link to={user?.roles?.includes('admin') ? "/admin" : "/dashboard"} className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-yellow-400 rounded-lg flex items-center justify-center rotate-[-3deg] border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
-              <span className="text-black font-black text-sm">L</span>
+            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center rotate-[-3deg] shadow-lg shadow-indigo-500/20">
+              <span className="text-white font-black text-sm">L</span>
             </div>
             <span className="text-xl font-black text-txt">
-              Learn<span className="text-yellow-400">Hub</span>
+              Learn<span className="text-indigo-600">Hub</span>
             </span>
           </Link>
         </div>
@@ -125,8 +125,8 @@ const Navbar = ({ user, onLogout }) => {
                   setSearchQuery('');
                 }
               }}
-              className="w-full pl-12 pr-4 py-2 bg-surface-input border-2 border-bdr rounded-xl text-sm text-txt placeholder-txt-muted
-                         focus:border-yellow-400/50 focus:outline-none transition-all"
+              className="w-full pl-12 pr-4 py-2 bg-surface-input border border-bdr rounded-xl text-sm text-txt placeholder-txt-muted
+                         focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 focus:outline-none transition-all"
             />
           </div>
         </div>
@@ -143,7 +143,7 @@ const Navbar = ({ user, onLogout }) => {
               return (
                 <Link key={link.to} to={link.to}
                   className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-txt-secondary
-                             hover:text-yellow-400 hover:bg-yellow-400/5 rounded-xl transition-all">
+                             hover:text-indigo-600 hover:bg-indigo-500/5 rounded-xl transition-all">
                   <link.icon className="w-4 h-4" />
                   {link.label}
                 </Link>
@@ -152,7 +152,7 @@ const Navbar = ({ user, onLogout }) => {
           </div>
 
           {/* Theme toggle */}
-          <button onClick={toggleTheme} className="p-2 rounded-xl text-txt-muted hover:text-yellow-500 hover:bg-yellow-400/10 transition-all">
+          <button onClick={toggleTheme} className="p-2 rounded-xl text-txt-muted hover:text-indigo-500 hover:bg-indigo-500/10 transition-all">
             {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
           </button>
 
@@ -160,11 +160,11 @@ const Navbar = ({ user, onLogout }) => {
           <div className="relative" ref={notifRef}>
             <button
               onClick={() => setNotifOpen(!notifOpen)}
-              className="relative p-2 rounded-xl text-txt-secondary hover:text-yellow-400 hover:bg-yellow-400/10 transition-all"
+              className="relative p-2 rounded-xl text-txt-secondary hover:text-indigo-600 hover:bg-indigo-500/10 transition-all"
             >
               <Bell className="w-5 h-5" />
               {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-yellow-400 text-black text-[10px] font-black rounded-full flex items-center justify-center border-2 border-surface">
+                <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-indigo-600 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-surface">
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
@@ -175,7 +175,7 @@ const Navbar = ({ user, onLogout }) => {
                 <div className="flex items-center justify-between px-4 py-3 border-b border-bdr">
                   <h3 className="text-sm font-bold text-txt">Notifications</h3>
                   {unreadCount > 0 && (
-                    <button onClick={markAllRead} className="text-xs text-yellow-400 hover:text-yellow-300">
+                    <button onClick={markAllRead} className="text-xs text-indigo-600 hover:text-indigo-500">
                       Mark all read
                     </button>
                   )}
@@ -195,7 +195,7 @@ const Navbar = ({ user, onLogout }) => {
                           setNotifOpen(false);
                           if (n.link) navigate(n.link);
                         }}
-                        className={`px-4 py-3 border-b border-bdr/50 hover:bg-surface-hover transition-colors cursor-pointer ${!n.read ? 'bg-yellow-400/5' : ''}`}>
+                        className={`px-4 py-3 border-b border-bdr/50 hover:bg-surface-hover transition-colors cursor-pointer ${!n.read ? 'bg-indigo-500/5' : ''}`}>
                         <p className="text-sm font-semibold text-txt">{n.title}</p>
                         <p className="text-xs text-txt-muted mt-0.5">{n.message}</p>
                         <p className="text-[10px] text-txt-muted mt-1">{timeAgo(n.createdAt)}</p>
@@ -211,7 +211,18 @@ const Navbar = ({ user, onLogout }) => {
           <div className="relative" ref={dropdownRef}>
             <button onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
               className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-surface-hover transition-all">
-              <div className="w-8 h-8 rounded-lg bg-yellow-400 flex items-center justify-center text-black text-sm font-black border-2 border-black">
+              {user?.avatar ? (
+                <img
+                  src={user.avatar}
+                  alt="Avatar"
+                  className="w-8 h-8 rounded-lg object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextElementSibling.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div className={`w-8 h-8 rounded-lg bg-indigo-600 items-center justify-center text-white text-sm font-black ${user?.avatar ? 'hidden' : 'flex'}`}>
                 {userInitial}
               </div>
               <ChevronDown className="hidden sm:block w-4 h-4 text-txt-muted" />
@@ -225,12 +236,12 @@ const Navbar = ({ user, onLogout }) => {
                 </div>
                 <div className="py-1">
                   <Link to={`/users/${user?._id}`} onClick={() => setProfileDropdownOpen(false)}
-                    className="flex items-center gap-2 px-4 py-2.5 text-sm text-txt-secondary hover:text-yellow-400 hover:bg-yellow-400/5 transition-all">
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm text-txt-secondary hover:text-indigo-600 hover:bg-indigo-500/5 transition-all">
                     <User className="w-4 h-4" /> View Profile
                   </Link>
                   {!user?.roles?.includes('admin') && (
                     <Link to="/settings" onClick={() => setProfileDropdownOpen(false)}
-                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-txt-secondary hover:text-yellow-400 hover:bg-yellow-400/5 transition-all">
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-txt-secondary hover:text-indigo-600 hover:bg-indigo-500/5 transition-all">
                       <Settings className="w-4 h-4" /> Settings
                     </Link>
                   )}

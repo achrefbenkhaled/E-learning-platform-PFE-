@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using AntiCheatApp.Services;
 using Microsoft.Win32;
 
 namespace AntiCheatApp
@@ -47,6 +48,7 @@ namespace AntiCheatApp
         private LowLevelKeyboardProc? _proc;
         private IntPtr _hookId = IntPtr.Zero;
         private bool _blockInputActive;
+        private bool _proctorStarted;
         private DispatcherTimer? _clipTimer;
         private DispatcherTimer? _cameraTimer;
         private readonly HttpClient _httpClient = new();
@@ -81,6 +83,10 @@ namespace AntiCheatApp
             core.Settings.AreDefaultContextMenusEnabled = false;
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.IsZoomControlEnabled = false;
+
+            // Listen for messages from the React frontend
+            core.WebMessageReceived += OnWebMessageReceived;
+
             core.Navigate(_examUrl);
 
             _clipTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
@@ -98,7 +104,41 @@ namespace AntiCheatApp
             };
             _clipTimer.Start();
 
-            StartCameraFeed();
+            // Camera feed is NOT started here anymore.
+            // It will be started when React sends START_PROCTOR.
+
+            // Mute all other apps' audio so only exam audio plays
+            AudioMuteManager.MuteOtherApps();
+        }
+
+        /// <summary>
+        /// Handles START_PROCTOR and QUIT_EXAM messages sent from React via window.chrome.webview.postMessage().
+        /// </summary>
+        private void OnWebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            var message = e.TryGetWebMessageAsString();
+
+            if (message == "START_PROCTOR" && !_proctorStarted)
+            {
+                _proctorStarted = true;
+                // Launch main.py now
+                var warning = ProctorProcessManager.StartProctor();
+                if (!string.IsNullOrEmpty(warning))
+                {
+                    CameraStatus.Text = $"Proctor warning: {warning}";
+                }
+                else
+                {
+                    CameraStatus.Text = "Starting camera…";
+                }
+                // Begin pulling camera frames from main.py
+                StartCameraFeed();
+            }
+            else if (message == "QUIT_EXAM")
+            {
+                // Auto-close the locked browser window after submission
+                Dispatcher.BeginInvoke(Close);
+            }
         }
 
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
@@ -117,6 +157,15 @@ namespace AntiCheatApp
 
             _clipTimer?.Stop();
             _cameraTimer?.Stop();
+
+            // Stop the proctor process if it was started
+            if (_proctorStarted)
+            {
+                ProctorProcessManager.StopProctorAndReport();
+            }
+
+            // Restore audio for all apps we muted
+            AudioMuteManager.RestoreAll();
 
             RestoreLockdownPolicies();
             ClipCursor(IntPtr.Zero);

@@ -1,16 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, BookOpen, Calendar, Users, Award } from 'lucide-react';
+import { ArrowLeft, BookOpen, Calendar, Users, Award, ShieldAlert, Lock } from 'lucide-react';
 import api from '../utils/api.js';
 import { formatDate } from '../utils/helpers.js';
+import useAuth from '../hooks/useAuth.js';
+import ReportModal from '../components/modals/ReportModal.jsx';
 
 const UserProfile = () => {
   const { userId } = useParams();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
   const [profile, setProfile] = useState(null);
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showReportModal, setShowReportModal] = useState(false);
   const cardRef = useRef(null);
 
   useEffect(() => {
@@ -106,9 +110,20 @@ const UserProfile = () => {
                 {initial}
               </div>
               <div className="flex-1 min-w-0">
-                <h1 className="text-2xl font-black text-txt">
-                  {profile.firstName} {profile.lastName}
-                </h1>
+                <div className="flex items-start justify-between gap-4">
+                  <h1 className="text-2xl font-black text-txt">
+                    {profile.firstName} {profile.lastName}
+                  </h1>
+                  {currentUser && currentUser._id !== profile._id && (
+                    <button
+                      onClick={() => setShowReportModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 text-xs font-bold hover:bg-red-500/20 transition-all"
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      Report
+                    </button>
+                  )}
+                </div>
                 {profile.roles && profile.roles.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {profile.roles.map((role) => (
@@ -126,92 +141,120 @@ const UserProfile = () => {
               </div>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-bdr">
-              <div className="text-center p-3 bg-surface rounded-xl">
-                <div className="flex items-center justify-center gap-1.5 text-yellow-400 mb-1">
-                  <Calendar className="w-4 h-4" />
+            {profile.isPrivate && (
+              <div className="mt-8 pt-8 border-t border-bdr text-center">
+                <div className="w-16 h-16 bg-surface rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-bdr">
+                  <Lock className="w-8 h-8 text-txt-muted" />
                 </div>
-                <p className="text-xs text-txt-muted">Joined</p>
-                <p className="text-sm font-bold text-txt">{formatDate(profile.createdAt)}</p>
+                <h2 className="text-xl font-bold text-txt mb-2">Private Profile</h2>
+                <p className="text-sm text-txt-muted max-w-sm mx-auto">
+                  This user has set their profile to private. You can only see their name and avatar.
+                </p>
               </div>
-              <div className="text-center p-3 bg-surface rounded-xl">
-                <div className="flex items-center justify-center gap-1.5 text-blue-400 mb-1">
-                  <BookOpen className="w-4 h-4" />
+            )}
+
+            {!profile.isPrivate && (
+              <>
+                {/* Stats */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-bdr">
+                  <div className="text-center p-3 bg-surface rounded-xl">
+                    <div className="flex items-center justify-center gap-1.5 text-yellow-400 mb-1">
+                      <Calendar className="w-4 h-4" />
+                    </div>
+                    <p className="text-xs text-txt-muted">Joined</p>
+                    <p className="text-sm font-bold text-txt">{formatDate(profile.createdAt)}</p>
+                  </div>
+                  <div className="text-center p-3 bg-surface rounded-xl">
+                    <div className="flex items-center justify-center gap-1.5 text-blue-400 mb-1">
+                      <BookOpen className="w-4 h-4" />
+                    </div>
+                    <p className="text-xs text-txt-muted">Courses</p>
+                    <p className="text-sm font-bold text-txt">{profile.courseCount || courses.length || 0}</p>
+                  </div>
+                  <div className="text-center p-3 bg-surface rounded-xl">
+                    <div className="flex items-center justify-center gap-1.5 text-green-400 mb-1">
+                      <Users className="w-4 h-4" />
+                    </div>
+                    <p className="text-xs text-txt-muted">Students</p>
+                    <p className="text-sm font-bold text-txt">{profile.studentCount || 0}</p>
+                  </div>
+                  <div className="text-center p-3 bg-surface rounded-xl">
+                    <div className="flex items-center justify-center gap-1.5 text-purple-400 mb-1">
+                      <Award className="w-4 h-4" />
+                    </div>
+                    <p className="text-xs text-txt-muted">Posts</p>
+                    <p className="text-sm font-bold text-txt">{profile.postCount || 0}</p>
+                  </div>
                 </div>
-                <p className="text-xs text-txt-muted">Courses</p>
-                <p className="text-sm font-bold text-txt">{profile.courseCount || courses.length || 0}</p>
-              </div>
-              <div className="text-center p-3 bg-surface rounded-xl">
-                <div className="flex items-center justify-center gap-1.5 text-green-400 mb-1">
-                  <Users className="w-4 h-4" />
-                </div>
-                <p className="text-xs text-txt-muted">Students</p>
-                <p className="text-sm font-bold text-txt">{profile.studentCount || 0}</p>
-              </div>
-              <div className="text-center p-3 bg-surface rounded-xl">
-                <div className="flex items-center justify-center gap-1.5 text-purple-400 mb-1">
-                  <Award className="w-4 h-4" />
-                </div>
-                <p className="text-xs text-txt-muted">Posts</p>
-                <p className="text-sm font-bold text-txt">{profile.postCount || 0}</p>
-              </div>
-            </div>
+              </>
+            )}
           </div>
 
-          {/* Courses by this user */}
-          {courses.length > 0 && (
-            <div>
-              <h2 className="text-lg font-bold text-txt mb-4">
-                Courses by {profile.firstName}
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {courses.map((course) => (
-                  <Link
-                    key={course._id}
-                    to={`/courses/${course._id}`}
-                    className="bg-surface-card border-2 border-bdr rounded-2xl p-5 hover:border-yellow-400/30 transition-all group"
-                  >
-                    <h3 className="text-base font-bold text-txt group-hover:text-yellow-400 transition-colors mb-1 line-clamp-1">
-                      {course.title}
-                    </h3>
-                    <p className="text-txt-muted text-sm mb-3 line-clamp-2">
-                      {course.description || 'No description'}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {course.sessionCount !== undefined && (
-                        <span className="badge badge-purple text-xs">
-                          {course.sessionCount} sessions
-                        </span>
-                      )}
-                      {course.enrollmentCount !== undefined && (
-                        <span className="badge badge-green text-xs">
-                          {course.enrollmentCount} enrolled
-                        </span>
-                      )}
-                      {course.price !== undefined && (
-                        <span className="badge badge-accent text-xs">
-                          {course.price === 0 ? 'Free' : `$${course.price}`}
-                        </span>
-                      )}
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
+          {!profile.isPrivate && (
+            <>
+              {/* Courses by this user */}
+              {courses.length > 0 && (
+                <div>
+                  <h2 className="text-lg font-bold text-txt mb-4">
+                    Courses by {profile.firstName}
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {courses.map((course) => (
+                      <Link
+                        key={course._id}
+                        to={`/courses/${course._id}`}
+                        className="bg-surface-card border-2 border-bdr rounded-2xl p-5 hover:border-yellow-400/30 transition-all group"
+                      >
+                        <h3 className="text-base font-bold text-txt group-hover:text-yellow-400 transition-colors mb-1 line-clamp-1">
+                          {course.title}
+                        </h3>
+                        <p className="text-txt-muted text-sm mb-3 line-clamp-2">
+                          {course.description || 'No description'}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {course.sessionCount !== undefined && (
+                            <span className="badge badge-purple text-xs">
+                              {course.sessionCount} sessions
+                            </span>
+                          )}
+                          {course.enrollmentCount !== undefined && (
+                            <span className="badge badge-green text-xs">
+                              {course.enrollmentCount} enrolled
+                            </span>
+                          )}
+                          {course.price !== undefined && (
+                            <span className="badge badge-accent text-xs">
+                              {course.price === 0 ? 'Free' : `$${course.price}`}
+                            </span>
+                          )}
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {/* Empty state for courses */}
-          {courses.length === 0 && (
-            <div className="bg-surface-card border-2 border-bdr rounded-2xl p-6 text-center">
-              <BookOpen className="w-8 h-8 text-txt-muted mx-auto mb-2" />
-              <p className="text-txt-muted text-sm">
-                {profile.firstName} hasn't published any courses yet.
-              </p>
-            </div>
+              {/* Empty state for courses */}
+              {courses.length === 0 && (
+                <div className="bg-surface-card border-2 border-bdr rounded-2xl p-6 text-center">
+                  <BookOpen className="w-8 h-8 text-txt-muted mx-auto mb-2" />
+                  <p className="text-txt-muted text-sm">
+                    {profile.firstName} hasn't published any courses yet.
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
+
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        contentType="user"
+        contentId={profile._id}
+        reportedUser={profile._id}
+      />
     </div>
   );
 };

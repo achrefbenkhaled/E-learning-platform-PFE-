@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { gsap } from 'gsap';
 import {
   ArrowLeft, Plus, ChevronUp, ChevronDown, Trash2,
-  BookOpen, Image, DollarSign, Globe, Layers, GripVertical
+  BookOpen, Image, DollarSign, Globe, Layers, GripVertical,
+  Users, Lock, Key
 } from 'lucide-react';
 import api from '../../utils/api.js';
 import { COURSE_CATEGORIES, COURSE_LEVELS } from '../../utils/constants.js';
@@ -20,11 +21,12 @@ const CreateCourse = () => {
   const [form, setForm] = useState({
     title: '',
     description: '',
-    category: 'Development',
+    categories: [],
     level: 'Beginner',
     price: 0,
     thumbnail: '',
     language: 'English',
+    type: 'standard',
   });
 
   const [sessions, setSessions] = useState([{ ...emptySession }]);
@@ -43,6 +45,16 @@ const CreateCourse = () => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: name === 'price' ? Number(value) : value }));
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }));
+  };
+
+  const handleCategoryToggle = (cat) => {
+    setForm(prev => {
+      const categories = prev.categories.includes(cat)
+        ? prev.categories.filter(c => c !== cat)
+        : [...prev.categories, cat];
+      return { ...prev, categories };
+    });
+    if (errors.categories) setErrors(prev => ({ ...prev, categories: '' }));
   };
 
   const handleSessionChange = (index, field, value) => {
@@ -84,6 +96,7 @@ const CreateCourse = () => {
     if (titleErr) newErrors.title = titleErr;
     const descErr = validateDescription(form.description, 5000);
     if (descErr) newErrors.description = descErr;
+    if (!form.categories || form.categories.length === 0) newErrors.categories = 'Please select at least one category';
     const priceErr = validatePrice(form.price);
     if (priceErr) newErrors.price = priceErr;
     if (form.thumbnail) {
@@ -215,18 +228,31 @@ const CreateCourse = () => {
 
                   {/* Category & Level */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-txt-secondary mb-2">Category</label>
-                      <select
-                        name="category"
-                        value={form.category}
-                        onChange={handleChange}
-                        className="input-field"
-                      >
+                    {/* Category Selection */}
+                    <div className="lg:col-span-2">
+                      <label className="block text-sm font-semibold text-txt-secondary mb-3">
+                        Categories <span className="text-red-400 ml-1">*</span>
+                        <span className="text-xs text-txt-muted ml-2 font-normal">(Select all that apply)</span>
+                      </label>
+                      <div className="flex flex-wrap gap-2">
                         {COURSE_CATEGORIES.map((cat) => (
-                          <option key={cat} value={cat}>{cat}</option>
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => handleCategoryToggle(cat)}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold border-2 transition-all ${
+                              form.categories.includes(cat)
+                                ? 'bg-yellow-400 border-black text-black shadow-brutal-sm'
+                                : 'bg-surface border-bdr text-txt-muted hover:border-txt-secondary'
+                            }`}
+                          >
+                            {cat}
+                          </button>
                         ))}
-                      </select>
+                      </div>
+                      {errors.categories && (
+                        <p className="text-red-400 text-sm mt-2">{errors.categories}</p>
+                      )}
                     </div>
 
                     <div>
@@ -244,29 +270,67 @@ const CreateCourse = () => {
                     </div>
                   </div>
 
-                  {/* Price & Language */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-txt-secondary mb-2 flex items-center gap-1">
-                        <DollarSign className="w-4 h-4 text-yellow-400" />
-                        Price ($)
-                      </label>
-                      <input
-                        name="price"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
-                        value={form.price}
-                        onChange={handleChange}
-                        className={`input-field ${errors.price ? 'border-red-400' : ''}`}
-                      />
-                      {errors.price && (
-                        <p className="text-red-400 text-sm mt-1">{errors.price}</p>
-                      )}
-                    </div>
+                  {/* Course Type */}
+                  <div className="p-4 bg-surface rounded-xl border-2 border-bdr">
+                    <label className="block text-sm font-semibold text-txt-secondary mb-3">Course Access Type</label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div 
+                        onClick={() => setForm(prev => ({ ...prev, type: 'standard' }))}
+                        className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                          form.type === 'standard' ? 'border-yellow-400 bg-yellow-400/5' : 'border-bdr hover:border-txt-muted'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className={`p-2 rounded-lg ${form.type === 'standard' ? 'bg-yellow-400 text-black' : 'bg-surface-muted text-txt-muted'}`}>
+                            <Globe className="w-5 h-5" />
+                          </div>
+                          <span className="font-bold text-txt">Standard Course</span>
+                        </div>
+                        <p className="text-xs text-txt-muted">Open to everyone. Can be free or paid. Appears in search results.</p>
+                      </div>
 
-                    <div>
+                      <div 
+                        onClick={() => setForm(prev => ({ ...prev, type: 'classroom' }))}
+                        className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                          form.type === 'classroom' ? 'border-yellow-400 bg-yellow-400/5' : 'border-bdr hover:border-txt-muted'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className={`p-2 rounded-lg ${form.type === 'classroom' ? 'bg-yellow-400 text-black' : 'bg-surface-muted text-txt-muted'}`}>
+                            <Users className="w-5 h-5" />
+                          </div>
+                          <span className="font-bold text-txt">Classroom</span>
+                        </div>
+                        <p className="text-xs text-txt-muted">Private access only. Requires a unique code to join. Great for schools/groups.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Price & Language (Hide price for classrooms) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {form.type !== 'classroom' && (
+                      <div>
+                        <label className="block text-sm font-semibold text-txt-secondary mb-2 flex items-center gap-1">
+                          <DollarSign className="w-4 h-4 text-yellow-400" />
+                          Price ($)
+                        </label>
+                        <input
+                          name="price"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0"
+                          value={form.price}
+                          onChange={handleChange}
+                          className={`input-field ${errors.price ? 'border-red-400' : ''}`}
+                        />
+                        {errors.price && (
+                          <p className="text-red-400 text-sm mt-1">{errors.price}</p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className={form.type === 'classroom' ? 'md:col-span-2' : ''}>
                       <label className="block text-sm font-semibold text-txt-secondary mb-2 flex items-center gap-1">
                         <Globe className="w-4 h-4 text-yellow-400" />
                         Language
@@ -435,9 +499,14 @@ const CreateCourse = () => {
                 </div>
 
                 <div className="p-5">
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
                     <span className="badge badge-accent">{form.level}</span>
-                    <span className="badge badge-blue">{form.category}</span>
+                    {form.categories.map(cat => (
+                      <span key={cat} className="badge badge-blue">{cat}</span>
+                    ))}
+                    {form.categories.length === 0 && (
+                      <span className="badge badge-blue">Category</span>
+                    )}
                   </div>
 
                   <h3 className="text-lg font-bold text-txt mb-1.5 line-clamp-1">
@@ -449,7 +518,7 @@ const CreateCourse = () => {
 
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-lg font-black text-yellow-400">
-                      {form.price === 0 ? 'Free' : `$${form.price}`}
+                      {form.type === 'classroom' ? 'Classroom' : (form.price === 0 ? 'Free' : `$${form.price}`)}
                     </span>
                     <span className="text-sm text-txt-muted">
                       {sessions.filter((s) => s.title.trim()).length} sessions

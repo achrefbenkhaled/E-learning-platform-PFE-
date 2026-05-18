@@ -16,6 +16,7 @@ const TakeTest = () => {
   const { testId } = useParams();
   const navigate = useNavigate();
   const { user, accessToken, refreshToken, getCurrentUser } = useAuth();
+  const isStudent = user?.roles?.includes('student');
 
   // Test data
   const [test, setTest] = useState(null);
@@ -45,6 +46,7 @@ const TakeTest = () => {
   const [antiCheatToken, setAntiCheatToken] = useState(null);
   const [checkingAntiCheat, setCheckingAntiCheat] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [waitingForCamera, setWaitingForCamera] = useState(false);
   const [examLockedByAntiCheat, setExamLockedByAntiCheat] = useState(false);
   const [secureLaunched, setSecureLaunched] = useState(false);
   const [proctorActive, setProctorActive] = useState(false);
@@ -90,6 +92,15 @@ const TakeTest = () => {
     };
     fetchTest();
   }, [testId]);
+
+  // Role & Block check
+  useEffect(() => {
+    if (user && !isStudent) {
+      setError('Only users with the Student role can take tests.');
+    } else if (test && test.isBlocked) {
+      setError('Your access to this test has been restricted by the instructor.');
+    }
+  }, [user, isStudent, test]);
 
   // Check local Anti-Cheat status
   useEffect(() => {
@@ -213,26 +224,7 @@ const TakeTest = () => {
       }
     }
 
-    if (params.get('autoStart') === 'true' && !started) {
-      let checkReady = null;
-      const waitAndStart = async () => {
-        // Wait for test, anti-cheat, AND Auth to be ready
-        let checks = 0;
-        checkReady = setInterval(() => {
-          const authReady = !!localStorage.getItem('accessToken');
-          if (test && !loading && authReady && (test.settings?.requireAntiCheat ? antiCheatActive : true)) {
-            clearInterval(checkReady);
-            handleStart();
-          }
-          if (++checks > 40) clearInterval(checkReady); // Timeout after 20s
-        }, 500);
-      };
-      waitAndStart();
-
-      return () => {
-        if (checkReady) clearInterval(checkReady);
-      };
-    }
+    // Removed autoStart effect to force user to click 'Start Test' inside locked browser
   }, [testId, test, loading, antiCheatActive, accessToken, getCurrentUser, started]);
 
   // Persist answers to localStorage
@@ -442,23 +434,64 @@ const TakeTest = () => {
       // Session Sync with local Anti-Cheat
       if (test?.settings?.requireAntiCheat) {
         try {
-          // Sync with local Python Proctor
-          await fetch('http://localhost:5050/start-session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_code: attempt, test_id: testId })
-          });
+          // If inside the WPF locked browser, tell it to launch main.py NOW
+          if (isAutoStart && window.chrome?.webview?.postMessage) {
+            window.chrome.webview.postMessage('START_PROCTOR');
+          }
 
           setSessionStarted(true);
           
           // If we are in a normal browser, lock the UI. 
-          // If we are in the WPF shell, we continue to show questions.
           if (!isAutoStart) {
+            // Try to sync session (proctor may already be running from desktop)
+            try {
+              await fetch('http://localhost:5050/start-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_code: attempt, test_id: testId })
+              });
+            } catch (e) { /* proctor may not be running in normal browser mode */ }
             setExamLockedByAntiCheat(true);
             setStarted(true);
             resetTimer(durationMs);
             startTimer();
             setLoading(false);
+            return;
+          } else {
+            // Wait for camera to work in locked browser before showing questions
+            setWaitingForCamera(true);
+            setLoading(false);
+            
+            const checkCamera = async () => {
+              try {
+                const res = await fetch('http://localhost:5050/status');
+                const statusData = await res.json();
+                if (statusData.running && statusData.initialized) {
+                  // Camera is ready — now sync the session
+                  try {
+                    await fetch('http://localhost:5050/start-session', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ session_code: attempt, test_id: testId })
+                    });
+                  } catch (e) { console.warn('start-session sync failed'); }
+                  
+                  setWaitingForCamera(false);
+                  setStarted(true);
+                  resetTimer(durationMs);
+                  startTimer();
+                  localStorage.setItem(
+                    `${ATTEMPT_KEY}_${testId}`,
+                    JSON.stringify({ attemptId: attempt, questions: qs, remainingTime: durationMs })
+                  );
+                } else {
+                  setTimeout(checkCamera, 1000);
+                }
+              } catch (e) {
+                setTimeout(checkCamera, 1000);
+              }
+            };
+            checkCamera();
             return;
           }
         } catch (err) {
@@ -509,6 +542,26 @@ const TakeTest = () => {
       // Stop camera before navigating
       if (cameraStream) {
         cameraStream.getTracks().forEach((track) => track.stop());
+      }
+      
+      // Auto-stop the anti-cheat session when submitted
+      if (antiCheatToken && ANTICHEAT_BASE_URL) {
+        try {
+          await fetch(`${ANTICHEAT_BASE_URL}/api/anticheat/stop`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: antiCheatToken })
+          });
+        } catch (e) {
+          console.warn('Failed to stop anti-cheat session');
+        }
+      }
+
+      // Tell the WPF locked browser to auto-close itself
+      if (window.chrome?.webview?.postMessage) {
+        window.chrome.webview.postMessage('QUIT_EXAM');
+        // Don't navigate — the WPF window will close and the user sees results in the regular browser
+        return;
       }
 
       navigate(`/tests/results/${attemptId}`);
@@ -572,6 +625,39 @@ const TakeTest = () => {
     );
   }
 
+  // Waiting for camera to initialize (full-screen blocking state)
+  if (waitingForCamera) {
+    return (
+      <div className="min-h-screen bg-surface flex items-center justify-center px-4 bg-[radial-gradient(circle_at_center,rgba(250,204,21,0.06),transparent_50%)]">
+        <div className="max-w-md w-full">
+          <div className="bg-surface-card border-2 border-yellow-400/30 rounded-[2rem] p-10 text-center shadow-brutal relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-400/0 via-yellow-400 to-yellow-400/0 animate-pulse" />
+            
+            <div className="w-20 h-20 bg-yellow-400/10 rounded-full flex items-center justify-center mx-auto mb-6 border-2 border-yellow-400/30 relative">
+              <Camera className="w-10 h-10 text-yellow-400" />
+              <div className="absolute inset-0 rounded-full border-2 border-yellow-400/20 animate-ping" />
+            </div>
+
+            <h2 className="text-2xl font-black text-txt mb-3">Waiting for Camera</h2>
+            <p className="text-txt-secondary text-sm mb-6 leading-relaxed">
+              The Anti-Cheat camera is initializing.<br />
+              Questions will appear as soon as the camera feed is ready.
+            </p>
+
+            <div className="flex items-center justify-center gap-2 text-yellow-400 mb-4">
+              <div className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+              <div className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
+              <div className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce" />
+            </div>
+
+            <p className="text-xs text-txt-muted">
+              This usually takes a few seconds…
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   // Start screen
   if (!started) {
     const params = new URLSearchParams(window.location.search);
@@ -606,14 +692,14 @@ const TakeTest = () => {
                           <p className="text-xs text-txt-muted">Verification of desktop environment</p>
                         </div>
                       </div>
-                      <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${antiCheatActive && proctorActive ? 'bg-green-400/20 text-green-400' : 'bg-red-400/20 text-red-400'}`}>
-                        {antiCheatActive && proctorActive ? 'Ready' : 'Not Detected'}
+                      <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${antiCheatActive ? 'bg-green-400/20 text-green-400' : 'bg-red-400/20 text-red-400'}`}>
+                        {antiCheatActive ? 'Ready' : 'Not Detected'}
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {!(antiCheatActive && proctorActive) && (
+                {!antiCheatActive && (
                   <div className="mb-8 p-4 bg-amber-400/10 border border-amber-400/20 rounded-2xl text-left">
                     <p className="text-xs text-amber-400 leading-relaxed">
                       <strong>How to start:</strong><br />
@@ -632,9 +718,9 @@ const TakeTest = () => {
 
                 <button
                   onClick={handleRequestSecureLaunch}
-                  disabled={!(antiCheatActive && proctorActive) || secureLaunched || isBeforeStart || isAfterEnd}
+                  disabled={!antiCheatActive || secureLaunched || isBeforeStart || isAfterEnd}
                   className={`w-full py-4 rounded-2xl font-black text-lg transition-all flex items-center justify-center gap-3 ${
-                    !(antiCheatActive && proctorActive) || secureLaunched || isBeforeStart || isAfterEnd
+                    !antiCheatActive || secureLaunched || isBeforeStart || isAfterEnd
                       ? 'bg-surface-input text-txt-muted border-2 border-bdr cursor-not-allowed'
                       : 'bg-yellow-400 text-black hover:bg-yellow-350 shadow-[0_4px_0_0_#ca8a04] active:translate-y-1 active:shadow-none'
                   }`}
@@ -769,13 +855,15 @@ const TakeTest = () => {
               isBeforeStart ||
               isAfterEnd ||
               (requireCamera && !cameraActive) ||
-              (isAntiCheatRequired && !antiCheatActive)
+              (isAntiCheatRequired && !antiCheatActive) ||
+              !isStudent
             }
             className={`w-full py-3 ${
               isBeforeStart ||
               isAfterEnd ||
               (requireCamera && !cameraActive) ||
-              (isAntiCheatRequired && !antiCheatActive)
+              (isAntiCheatRequired && !antiCheatActive) ||
+              !isStudent
                 ? 'btn-secondary opacity-50 cursor-not-allowed'
                 : 'btn-primary'
             }`}
@@ -783,6 +871,10 @@ const TakeTest = () => {
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Starting...
+              </span>
+            ) : !isStudent ? (
+              <span className="flex items-center justify-center gap-2 text-red-400">
+                <Lock className="w-4 h-4" /> Students Only
               </span>
             ) : isAfterEnd ? (
               <span className="flex items-center justify-center gap-2">
@@ -1154,6 +1246,21 @@ const TakeTest = () => {
             <button onClick={requestCamera} className="btn-primary w-full py-2.5 flex items-center justify-center gap-2">
               <Camera className="w-4 h-4" /> Re-enable Camera
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Waiting for Camera Modal */}
+      {waitingForCamera && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-surface-card border-2 border-yellow-400 rounded-2xl p-8 max-w-sm w-full mx-4 text-center animate-pulse">
+            <div className="w-16 h-16 bg-yellow-400/10 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-yellow-400">
+              <Camera className="w-8 h-8 text-yellow-400" />
+            </div>
+            <h3 className="text-xl font-black text-yellow-400 mb-2">Waiting for Camera</h3>
+            <p className="text-txt-secondary text-sm">
+              Please wait while the Anti-Cheat camera feed initializes...
+            </p>
           </div>
         </div>
       )}

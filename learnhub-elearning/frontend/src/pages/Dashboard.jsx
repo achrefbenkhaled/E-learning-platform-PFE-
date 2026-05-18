@@ -9,6 +9,7 @@ import { UserCheck } from 'lucide-react';
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const isStudent = user?.roles?.includes('student');
   const navigate = useNavigate();
   const [enrolledCourses, setEnrolledCourses] = useState([]);
   const [createdCourses, setCreatedCourses] = useState([]);
@@ -69,7 +70,7 @@ const Dashboard = () => {
     }
   }, [loading]);
 
-  const activeCourses = enrolledCourses.filter(c => c.status === 'active');
+  const activeCourses = enrolledCourses.filter(c => c.status === 'active' && !c.isBlocked);
   const completedCourses = enrolledCourses.filter(c => c.status === 'completed');
 
   const stats = [
@@ -88,9 +89,9 @@ const Dashboard = () => {
 
   const quickActions = [
     { label: 'Browse Courses', icon: Search, to: '/courses', color: 'hover:bg-yellow-400/5 hover:text-yellow-400' },
+    ...(isStudent ? [{ label: 'Take a Test', icon: ClipboardCheck, to: '/tests', color: 'hover:bg-purple-400/5 hover:text-purple-400' }] : []),
     { label: 'Create Course', icon: PlusCircle, to: '/courses/create', color: 'hover:bg-green-400/5 hover:text-green-400' },
     { label: 'Community', icon: MessageSquare, to: '/community', color: 'hover:bg-blue-400/5 hover:text-blue-400' },
-    { label: 'Take a Test', icon: ClipboardCheck, to: '/tests', color: 'hover:bg-purple-400/5 hover:text-purple-400' },
   ];
 
   if (loading) {
@@ -139,58 +140,60 @@ const Dashboard = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Continue Learning */}
-        <div className="lg:col-span-2 content-section">
-          <div className="card p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-xl font-bold text-txt flex items-center gap-2">
-                <Zap className="w-5 h-5 text-yellow-400" /> Continue Learning
-              </h2>
-              <Link to="/courses/my" className="text-sm text-yellow-400 hover:text-yellow-300 flex items-center gap-1">
-                View all <ArrowRight className="w-3 h-3" />
-              </Link>
-            </div>
+        {isStudent && (
+          <div className="lg:col-span-2 content-section">
+            <div className="card p-6">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-xl font-bold text-txt flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-yellow-400" /> Continue Learning
+                </h2>
+                <Link to="/courses/my" className="text-sm text-yellow-400 hover:text-yellow-300 flex items-center gap-1">
+                  View all <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
 
-            {activeCourses.length > 0 ? (
-              <div className="space-y-3">
-                {activeCourses.slice(0, 4).map(course => (
-                  <div
-                    key={course._id}
-                    className="flex items-center gap-4 p-4 rounded-xl bg-surface border border-bdr/50
-                               hover:border-yellow-400/20 cursor-pointer transition-all group"
-                    onClick={() => navigate(`/courses/${course._id}`)}
-                  >
-                    <div className="w-14 h-14 rounded-xl bg-yellow-400/10 flex items-center justify-center text-yellow-400 flex-shrink-0">
-                      <BookOpen className="w-6 h-6" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-txt truncate group-hover:text-yellow-400 transition-colors">
-                        {course.title}
-                      </h3>
-                      <div className="flex items-center gap-3 mt-2">
-                        <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-full transition-all"
-                            style={{ width: `${course.progress || 0}%` }}
-                          />
-                        </div>
-                        <span className="text-sm font-bold text-yellow-400 whitespace-nowrap">{course.progress || 0}%</span>
+              {activeCourses.length > 0 ? (
+                <div className="space-y-3">
+                  {activeCourses.slice(0, 4).map(course => (
+                    <div
+                      key={course._id}
+                      className="flex items-center gap-4 p-4 rounded-xl bg-surface border border-bdr/50
+                                hover:border-yellow-400/20 cursor-pointer transition-all group"
+                      onClick={() => navigate(`/courses/${course._id}`)}
+                    >
+                      <div className="w-14 h-14 rounded-xl bg-yellow-400/10 flex items-center justify-center text-yellow-400 flex-shrink-0">
+                        <BookOpen className="w-6 h-6" />
                       </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-txt truncate group-hover:text-yellow-400 transition-colors">
+                          {course.title}
+                        </h3>
+                        <div className="flex items-center gap-3 mt-2">
+                          <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-full transition-all"
+                              style={{ width: `${course.progress || 0}%` }}
+                            />
+                          </div>
+                          <span className="text-sm font-bold text-yellow-400 whitespace-nowrap">{course.progress || 0}%</span>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-5 h-5 text-txt-muted group-hover:text-yellow-400 transition-colors" />
                     </div>
-                    <ArrowRight className="w-5 h-5 text-txt-muted group-hover:text-yellow-400 transition-colors" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <BookOpen className="w-12 h-12 text-txt-muted mx-auto mb-3" />
-                <p className="text-txt-muted mb-4">No courses yet. Start learning today!</p>
-                <button onClick={() => navigate('/courses')} className="btn-primary">
-                  Browse Courses
-                </button>
-              </div>
-            )}
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <BookOpen className="w-12 h-12 text-txt-muted mx-auto mb-3" />
+                  <p className="text-txt-muted mb-4">No courses yet. Start learning today!</p>
+                  <button onClick={() => navigate('/courses')} className="btn-primary">
+                    Browse Courses
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Right column */}
         <div className="space-y-6">

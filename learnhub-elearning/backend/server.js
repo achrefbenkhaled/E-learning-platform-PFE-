@@ -17,10 +17,16 @@ import chatRoutes from './routes/chat.js';
 import userRoutes from './routes/users.js';
 import notificationRoutes from './routes/notifications.js';
 import instructorRequestRoutes from './routes/instructorRequests.js';
+import reportRoutes from './routes/reports.js';
 import { authMiddleware } from './middleware/auth.js';
 import { setupSocketHandlers } from './sockets/handlers.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const allowedOrigins = [
   'http://localhost:5173',
@@ -71,23 +77,28 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Serve static files from uploads folder
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Prevent NoSQL injection
 app.use(mongoSanitize());
 
 // Rate limiting
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: process.env.NODE_ENV === 'production' ? 300 : 10000, // Very high limit for dev
   standardHeaders: true,
   legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
 });
 app.use(generalLimiter);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // More room for dev
   standardHeaders: true,
   legacyHeaders: false,
+  message: { error: 'Too many login attempts, please try again later.' }
 });
 app.use('/api/auth', authLimiter);
 
@@ -106,6 +117,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/instructor-requests', instructorRequestRoutes);
+app.use('/api/reports', reportRoutes);
 
 // 404
 app.use((req, res) => {

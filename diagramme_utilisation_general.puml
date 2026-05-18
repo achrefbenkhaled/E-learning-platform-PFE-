@@ -1,0 +1,166 @@
+@startuml Diagramme_Utilisation_General
+
+' ================= CUSTOM SKINPARAM & STYLING =================
+skinparam BackgroundColor #F8FAFC
+skinparam defaultFontName "Segoe UI", Arial, sans-serif
+skinparam defaultFontSize 12
+skinparam roundCorner 10
+skinparam linetype ortho
+skinparam nodesep 60
+skinparam ranksep 80
+
+' --- Actor Styling ---
+skinparam actorStyle stickman
+skinparam actor {
+    BackgroundColor #FFFFFF
+    BorderColor #4F46E5
+    BorderThickness 2
+    FontColor #1E293B
+    FontSize 13
+    FontStyle bold
+}
+
+' --- Use Case Styling (Standard) ---
+skinparam usecase {
+    BackgroundColor #ECFDF5
+    BorderColor #10B981
+    BorderThickness 1.5
+    FontColor #065F46
+    FontSize 12
+    ArrowColor #64748B
+    ArrowThickness 1
+}
+
+' --- Special Use Cases ---
+skinparam usecase<<Auth>> {
+    BackgroundColor #F5F3FF
+    BorderColor #8B5CF6
+    BorderThickness 2
+    FontColor #5B21B6
+    FontSize 13
+    FontStyle bold
+}
+
+skinparam usecase<<AntiCheat>> {
+    BackgroundColor #FEF2F2
+    BorderColor #EF4444
+    BorderThickness 2
+    FontColor #991B1B
+    FontSize 12
+    FontStyle bold
+}
+
+' --- Package Styling ---
+skinparam packageStyle rectangle
+skinparam package {
+    BackgroundColor #F1F5F9
+    BorderColor #CBD5E1
+    BorderThickness 1.5
+    FontColor #1E293B
+    FontSize 13
+    FontStyle bold
+}
+
+title LearnHub E-Learning Platform — General Use Case Diagram
+
+' ================= ACTORS & INHERITANCE =================
+actor "Visitor" as V
+actor "Authenticated User" as AuthUser
+actor "Student" as S
+actor "Instructor" as I
+actor "Admin" as A
+
+' Inheritance Chain (Vertical alignment using hidden links)
+V <|-- AuthUser
+AuthUser <|-- S
+AuthUser <|-- I
+AuthUser <|-- A
+
+V -[hidden]down-> AuthUser
+AuthUser -[hidden]down-> S
+S -[hidden]down-> I
+I -[hidden]down-> A
+
+' ================= SYSTEM BOUNDARY =================
+rectangle "LearnHub Platform" {
+
+    ' --- Package 1: Auth & Common Actions ---
+    package "1. Authentication & Core" as P_Auth {
+        usecase "View Home Page" as UC_Home
+        usecase "Browse & Search Courses" as UC_Browse
+        usecase "Register New Account" as UC_Register
+        usecase "Login & Authenticate" as UC_Auth <<Auth>>
+        usecase "Manage Profile & Avatars" as UC_Profile
+        usecase "Access Real-Time Chats & Channels" as UC_Chat
+        usecase "Receive System Notifications" as UC_Notify
+        
+        UC_Register ..> UC_Auth : <<include>>
+    }
+
+    ' --- Package 2: Student Actions ---
+    package "2. Student Actions" as P_Student {
+        usecase "Enroll & Pay for Course (Checkout)" as UC_Enroll
+        usecase "Join Classroom Course via Code" as UC_JoinCode
+        usecase "Access Course Sessions (Video/PDF)" as UC_ViewSessions
+        usecase "Pass Exam with Anti-Cheat\n(WPF Lock & Cam Proctoring)" as UC_PassExam <<AntiCheat>>
+        usecase "Interact in Community (Post & Comment)" as UC_Community
+        usecase "Request Instructor Role (Upload CV/ID)" as UC_RequestRole
+        usecase "Report Inappropriate Content" as UC_Report
+    }
+
+    ' --- Package 3: Instructor Actions ---
+    package "3. Instructor Actions" as P_Instructor {
+        usecase "Manage Courses & Sessions" as UC_ManageCourse
+        usecase "Manage Exams & Quizzes (with AI)" as UC_ManageTest
+        usecase "Review Student Proctoring Reports" as UC_MonitorProctoring
+        usecase "Block/Unblock Student Access" as UC_ManageStudents
+    }
+
+    ' --- Package 4: Admin Actions ---
+    package "4. Admin Actions" as P_Admin {
+        usecase "Manage Users & Role Assignment" as UC_Users
+        usecase "Review & Process Instructor Requests" as UC_AdminReq
+        usecase "Moderate Content & Resolve Reports" as UC_Moderate
+    }
+}
+
+' ================= PACKAGE LAYOUT CONTROL =================
+' Hidden layout links to force packages to stack beautifully in vertical columns
+P_Auth -[hidden]down-> P_Student
+P_Student -[hidden]down-> P_Instructor
+P_Instructor -[hidden]down-> P_Admin
+
+' ================= ACTOR CONNECTIONS =================
+
+' --- Visitor ---
+V -- UC_Home
+V -- UC_Browse
+V -- UC_Register
+V -- UC_Auth
+
+' --- Authenticated User (Common) ---
+AuthUser -- UC_Profile
+AuthUser -- UC_Chat
+AuthUser -- UC_Notify
+
+' --- Student ---
+S -- UC_Enroll
+S -- UC_JoinCode
+S -- UC_ViewSessions
+S -- UC_PassExam
+S -- UC_Community
+S -- UC_RequestRole
+S -- UC_Report
+
+' --- Instructor ---
+I -- UC_ManageCourse
+I -- UC_ManageTest
+I -- UC_MonitorProctoring
+I -- UC_ManageStudents
+
+' --- Admin ---
+A -- UC_Users
+A -- UC_AdminReq
+A -- UC_Moderate
+
+@enduml

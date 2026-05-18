@@ -6,6 +6,14 @@ export const createRequest = async (req, res) => {
     const { name, email, reason, experience } = req.body;
     const userId = req.userId;
 
+    if (!req.files || !req.files.idCard || !req.files.cv || !req.files.diploma) {
+      return res.status(400).json({ error: 'Please upload all required documents (ID Card, CV, Diploma)' });
+    }
+
+    const idCard = req.files.idCard[0].filename;
+    const cv = req.files.cv[0].filename;
+    const diploma = req.files.diploma[0].filename;
+
     // Check if user is a student
     if (!req.userRoles.includes('student')) {
       return res.status(403).json({ error: 'Only students can request instructor access' });
@@ -28,6 +36,9 @@ export const createRequest = async (req, res) => {
       email,
       reason,
       experience,
+      idCard,
+      cv,
+      diploma,
     });
 
     await newRequest.save();

@@ -15,9 +15,27 @@ summary_path = os.getenv("PROCTOR_SUMMARY_PATH", "").strip()
 stop_file = os.getenv("PROCTOR_STOP_FILE", "").strip()
 frame_path = os.getenv("PROCTOR_FRAME_PATH", "").strip()
 
-mp_face_mesh = mp.solutions.face_mesh.FaceMesh(refine_landmarks=True)
-mp_face_detection = mp.solutions.face_detection.FaceDetection()
-yolo_model = YOLO("yolov8n.pt")
+# Global state
+state_lock = threading.Lock()
+latest_jpeg = None
+last_error = None
+running = True
+initialized = False
+
+away_count = 0
+phone_detected_count = 0
+unauthorized_person_detected_count = 0
+no_person_detected_count = 0
+total_frames = 0
+calibrated_pitch = 0
+calibrated_yaw = 0
+start_session_time = None
+current_session = None
+
+# Model placeholders (initialized in thread)
+mp_face_mesh = None
+mp_face_detection = None
+yolo_model = None
 
 model_points = np.array(
     [
@@ -32,21 +50,6 @@ model_points = np.array(
 )
 MAX_YAW_OFFSET = 110 * 1.35
 MAX_PITCH_OFFSET = 140 * 1.35
-
-state_lock = threading.Lock()
-latest_jpeg = None
-last_error = None
-running = True
-
-away_count = 0
-phone_detected_count = 0
-unauthorized_person_detected_count = 0
-no_person_detected_count = 0
-total_frames = 0
-calibrated_pitch = 0
-calibrated_yaw = 0
-start_session_time = None
-current_session = None  # Stores the active session code
 
 app = Flask(__name__)
 
@@ -90,21 +93,22 @@ def is_looking_away(pitch, yaw):
     return abs(pitch - calibrated_pitch) > MAX_PITCH_OFFSET or abs(yaw - calibrated_yaw) > MAX_YAW_OFFSET
 
 
-def detect_multiple_faces(detections):
-    return len(detections) > 1
-
-
 def open_camera_with_fallback():
+    # Try common indices with CAP_DSHOW for faster startup on Windows
     for idx in [0, 1, 2]:
         cam = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
         if cam.isOpened():
-            print(f"[CAMERA] Opened camera index {idx} with CAP_DSHOW")
+            cam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            cam.set(cv2.CAP_PROP_FPS, 30)
+            print(f"[CAMERA] Opened index {idx} (DSHOW)")
             return cam
         cam.release()
-    for idx in [0, 1, 2]:
+    # Fallback to default
+    for idx in [0, 1]:
         cam = cv2.VideoCapture(idx)
         if cam.isOpened():
-            print(f"[CAMERA] Opened camera index {idx} with default backend")
+            print(f"[CAMERA] Opened index {idx} (Default)")
             return cam
         cam.release()
     return None
@@ -112,21 +116,10 @@ def open_camera_with_fallback():
 
 def write_summary(duration_sec):
     safe_total_frames = max(1, total_frames)
-    away_pct = away_count / safe_total_frames * 100
-    phone_pct = phone_detected_count / safe_total_frames * 100
-    unauth_pct = unauthorized_person_detected_count / safe_total_frames * 100
-    no_person_pct = no_person_detected_count / safe_total_frames * 100
-
-    print("\n=== SESSION SUMMARY ===")
-    print(f"Total Duration: {duration_sec} seconds")
-    print(f"Looking Away: {away_pct:.2f}%")
-    print(f"Phone Detection: {phone_pct:.2f}%")
-    print(f"Unauthorized Person Detection: {unauth_pct:.2f}%")
-    print(f"No Person Detection: {no_person_pct:.2f}%")
-    print(f"Looking Away Count: {away_count}")
-    print(f"Phone Detection Count: {phone_detected_count}")
-    print(f"Multiple Person Count: {unauthorized_person_detected_count}")
-    print(f"No Person Count: {no_person_detected_count}")
+    away_pct = (away_count / safe_total_frames) * 100
+    phone_pct = (phone_detected_count / safe_total_frames) * 100
+    unauth_pct = (unauthorized_person_detected_count / safe_total_frames) * 100
+    no_person_pct = (no_person_detected_count / safe_total_frames) * 100
 
     if summary_path:
         try:
@@ -153,162 +146,152 @@ def write_summary(duration_sec):
 
 
 def monitor_loop():
-    global latest_jpeg, last_error, running
+    global latest_jpeg, last_error, running, initialized
     global away_count, phone_detected_count, unauthorized_person_detected_count, no_person_detected_count
     global total_frames, calibrated_pitch, calibrated_yaw, start_session_time
+    global mp_face_mesh, mp_face_detection, yolo_model
 
-    cap = open_camera_with_fallback()
-    if cap is None or not cap.isOpened():
-        last_error = "Camera not found. Check camera permissions, close apps using camera, and ensure webcam is connected."
+    print("[SYSTEM] Initializing Models...")
+    try:
+        mp_face_mesh = mp.solutions.face_mesh.FaceMesh(refine_landmarks=True)
+        mp_face_detection = mp.solutions.face_detection.FaceDetection()
+        yolo_model = YOLO("yolov8n.pt")
+        initialized = True
+        print("[SYSTEM] Models loaded successfully.")
+    except Exception as e:
+        last_error = f"Model initialization failed: {str(e)}"
         print(f"[ERROR] {last_error}")
-        write_summary(0)
         running = False
         return
 
+    cap = open_camera_with_fallback()
+    if cap is None or not cap.isOpened():
+        last_error = "Camera not found. Check permissions or connection."
+        print(f"[ERROR] {last_error}")
+        running = False
+        return
+
+    # Calibration
     calibration_frames = []
     calib_start = time.time()
-    while time.time() - calib_start < 3 and running:
+    while time.time() - calib_start < 2 and running:
         ret, frame = cap.read()
-        if not ret:
-            continue
-        h, w, _ = frame.shape
+        if not ret: continue
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mesh = mp_face_mesh.process(rgb)
-        if mesh.multi_face_landmarks:
-            lm = mesh.multi_face_landmarks[0].landmark
-            angles = estimate_head_pose(lm, w, h)
-            if angles:
-                pitch, yaw, _ = angles
-                calibration_frames.append((pitch, yaw))
+        res = mp_face_mesh.process(rgb)
+        if res.multi_face_landmarks:
+            lm = res.multi_face_landmarks[0].landmark
+            angles = estimate_head_pose(lm, frame.shape[1], frame.shape[0])
+            if angles: calibration_frames.append((angles[0], angles[1]))
 
     if calibration_frames:
         calibrated_pitch = np.mean([p[0] for p in calibration_frames])
         calibrated_yaw = np.mean([p[1] for p in calibration_frames])
 
     start_session_time = time.time()
+    frame_idx = 0
+    
+    # YOLO only every N frames to save CPU
+    YOLO_SKIP = 10 
+    phone_detected_this_cycle = False
+
     while running and cap.isOpened():
-        if stop_file and os.path.exists(stop_file):
-            break
+        if stop_file and os.path.exists(stop_file): break
+        
         ret, frame = cap.read()
-        if not ret:
-            continue
-
+        if not ret: continue
+        
+        frame_idx += 1
         total_frames += 1
-        h, w, _ = frame.shape
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mesh = mp_face_mesh.process(rgb)
-        face_detection = mp_face_detection.process(rgb)
-        phone_detected = False
-        has_face = bool(face_detection.detections)
+        
+        # Optimization: Resize for processing
+        h, w = frame.shape[:2]
+        small_frame = cv2.resize(frame, (320, 240))
+        rgb_small = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+        
+        # 1. Face/Mesh detection (every frame is fine for Mediapipe)
+        mesh_res = mp_face_mesh.process(rgb_small)
+        det_res = mp_face_detection.process(rgb_small)
+        
+        has_face = bool(det_res.detections)
+        
+        # Pose analysis
+        if mesh_res.multi_face_landmarks:
+            lm = mesh_res.multi_face_landmarks[0].landmark
+            angles = estimate_head_pose(lm, 320, 240)
+            if angles and is_looking_away(angles[0], angles[1]):
+                away_count += 1
+                cv2.putText(frame, "LOOKING AWAY!", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
-        if mesh.multi_face_landmarks:
-            lm = mesh.multi_face_landmarks[0].landmark
-            angles = estimate_head_pose(lm, w, h)
-            if angles:
-                pitch, yaw, _ = angles
-                if is_looking_away(pitch, yaw):
-                    away_count += 1
-                    cv2.putText(frame, "LOOKING AWAY!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
-        if face_detection.detections and detect_multiple_faces(face_detection.detections):
+        # Multiple people / No person
+        if det_res.detections and len(det_res.detections) > 1:
             unauthorized_person_detected_count += 1
-            cv2.putText(frame, "MULTIPLE PEOPLE DETECTED!", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(frame, "MULTIPLE PEOPLE!", (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
         elif not has_face:
             no_person_detected_count += 1
-            cv2.putText(frame, "NO PERSON DETECTED!", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 165, 255), 2)
+            cv2.putText(frame, "NO FACE DETECTED!", (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
 
-        yolo_results = yolo_model(frame, stream=True, verbose=False)
-        for result in yolo_results:
-            for box in result.boxes:
-                cls = result.names[int(box.cls[0])]
-                if cls in ["cell phone", "book"]:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                    phone_detected = cls == "cell phone"
-
-        if phone_detected:
+        # 2. YOLO Object Detection (Heavy - Skip Frames)
+        if frame_idx % YOLO_SKIP == 0:
+            phone_detected_this_cycle = False
+            yolo_results = yolo_model(small_frame, stream=True, verbose=False)
+            for result in yolo_results:
+                for box in result.boxes:
+                    cls = result.names[int(box.cls[0])]
+                    if cls in ["cell phone", "book"]:
+                        phone_detected_this_cycle = True
+                        break
+        
+        if phone_detected_this_cycle:
             phone_detected_count += 1
-            cv2.putText(frame, "PHONE DETECTED!", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(frame, "PHONE DETECTED!", (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
-        cv2.putText(frame, "Keep your face centered and avoid looking away.", (20, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-
-        ok, jpg = cv2.imencode(".jpg", frame)
+        # Encoding for live view
+        ok, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
         if ok:
             data = jpg.tobytes()
             with state_lock:
                 latest_jpeg = data
-            if frame_path:
+            if frame_path and frame_idx % 5 == 0: # Save to file less frequently
                 try:
-                    with open(frame_path, "wb") as f:
-                        f.write(data)
-                except Exception:
-                    pass
+                    with open(frame_path, "wb") as f: f.write(data)
+                except: pass
 
     cap.release()
-    duration = int(time.time() - start_session_time) if start_session_time else 0
-    write_summary(duration)
+    write_summary(int(time.time() - start_session_time) if start_session_time else 0)
     running = False
-
-
-@app.get("/")
-def index():
-    return "<h2>Proctor Web App</h2><p>Live stream: <a href='/video_feed'>/video_feed</a></p><p>Stats JSON: <a href='/stats'>/stats</a></p>"
 
 
 @app.get("/status")
 def status():
-    """Web app checks this to see if the desktop proctor is running."""
-    return jsonify({"status": "ACTIVE", "running": running})
+    return jsonify({"status": "ACTIVE", "running": running, "initialized": initialized})
 
 
 @app.post("/start-session")
 def start_session():
-    """Web app sends the session code here when the exam starts."""
     global current_session
     try:
         from flask import request
         data = request.json
         current_session = data.get("session_code")
-        print(f"[SESSION] Started session: {current_session}")
         return jsonify({"ok": True, "session": current_session})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
 
-@app.get("/verify")
-def verify():
-    """Verify if the proctoring is still healthy and the session matches."""
-    safe_total_frames = max(1, total_frames)
-    return jsonify({
-        "active": running and (last_error is None),
-        "session_code": current_session,
-        "violations": {
-            "away": away_count / safe_total_frames > 0.15,
-            "phone": phone_detected_count > 0,
-            "multiple_people": unauthorized_person_detected_count > 0
-        }
-    })
-
-
 @app.get("/stats")
 def stats():
     safe_total_frames = max(1, total_frames)
-    return jsonify(
-        {
-            "running": running,
-            "error": last_error,
-            "duration_seconds": int(time.time() - start_session_time) if start_session_time else 0,
-            "total_frames": total_frames,
-            "looking_away_percent": away_count / safe_total_frames * 100,
-            "phone_detection_percent": phone_detected_count / safe_total_frames * 100,
-            "unauthorized_person_percent": unauthorized_person_detected_count / safe_total_frames * 100,
-            "no_person_percent": no_person_detected_count / safe_total_frames * 100,
-            "away_count": away_count,
-            "phone_detected_count": phone_detected_count,
-            "unauthorized_person_detected_count": unauthorized_person_detected_count,
-            "no_person_detected_count": no_person_detected_count,
-        }
-    )
+    return jsonify({
+        "running": running,
+        "initialized": initialized,
+        "error": last_error,
+        "duration": int(time.time() - start_session_time) if start_session_time else 0,
+        "looking_away_pct": (away_count / safe_total_frames) * 100,
+        "phone_detected_pct": (phone_detected_count / safe_total_frames) * 100,
+        "unauthorized_pct": (unauthorized_person_detected_count / safe_total_frames) * 100,
+        "no_person_pct": (no_person_detected_count / safe_total_frames) * 100,
+    })
 
 
 def frame_generator():
@@ -316,14 +299,19 @@ def frame_generator():
         with state_lock:
             frame = latest_jpeg
         if frame is None:
-            time.sleep(0.05)
+            time.sleep(0.1)
             continue
-        yield b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+        yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
 
 
 @app.get("/video_feed")
 def video_feed():
     return Response(frame_generator(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
+@app.get("/")
+def index():
+    return "Proctor Active"
 
 
 if __name__ == "__main__":

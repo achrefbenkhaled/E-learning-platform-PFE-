@@ -5,11 +5,12 @@ import api from '../../utils/api.js';
 
 const statCards = [
   { key: 'totalUsers', label: 'Total Users', icon: Users, color: 'yellow' },
+  { key: 'totalStudents', label: 'Total Students', icon: GraduationCap, color: 'green' },
+  { key: 'instructors', label: 'Instructors', icon: Activity, color: 'blue' },
   { key: 'totalCourses', label: 'Total Courses', icon: BookOpen, color: 'purple' },
   { key: 'totalTests', label: 'Total Tests', icon: FileText, color: 'pink' },
-  { key: 'totalEnrollments', label: 'Total Enrollments', icon: GraduationCap, color: 'green' },
-  { key: 'instructors', label: 'Instructors', icon: Activity, color: 'blue' },
-  { key: 'activeCourses', label: 'Active Courses', icon: BookOpen, color: 'cyan' },
+  { key: 'totalEnrollments', label: 'Total Enrollments', icon: GraduationCap, color: 'cyan' },
+  { key: 'totalPosts', label: 'Community Posts', icon: MessageSquare, color: 'purple' },
 ];
 
 const colorMap = {
@@ -122,8 +123,12 @@ const AdminDashboard = () => {
                 <span className="font-bold text-txt">{stats.totalUsers || 0}</span>
               </div>
               <div className="flex justify-between items-center text-sm">
+                <span className="text-txt-muted">Students</span>
+                <span className="font-bold text-txt text-green-400">{stats.totalStudents || 0}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
                 <span className="text-txt-muted">Instructors</span>
-                <span className="font-bold text-txt">{stats.instructors || 0}</span>
+                <span className="font-bold text-txt text-blue-400">{stats.instructors || 0}</span>
               </div>
             </div>
             <button
@@ -209,8 +214,10 @@ const AdminDashboard = () => {
                 <span className="font-bold text-txt">{stats.totalPosts || 0}</span>
               </div>
               <div className="flex justify-between items-center text-sm">
-                <span className="text-txt-muted">Pending Review</span>
-                <span className="font-bold text-txt">0</span>
+                <span className="text-txt-muted">Pending Reports</span>
+                <span className={`font-bold ${stats.pendingReports > 0 ? 'text-red-400 animate-pulse' : 'text-txt'}`}>
+                  {stats.pendingReports || 0}
+                </span>
               </div>
             </div>
             <button
@@ -254,6 +261,10 @@ const AdminDashboard = () => {
             <div>
               <p className="text-2xl font-black text-yellow-400">{stats.totalUsers || 0}</p>
               <p className="text-xs text-txt-muted mt-1">Total Users</p>
+            </div>
+            <div>
+              <p className="text-2xl font-black text-green-400">{stats.totalStudents || 0}</p>
+              <p className="text-xs text-txt-muted mt-1">Students</p>
             </div>
             <div>
               <p className="text-2xl font-black text-purple-400">{stats.totalCourses || 0}</p>

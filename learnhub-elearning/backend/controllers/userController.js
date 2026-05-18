@@ -68,20 +68,58 @@ export const searchUsers = async (req, res) => {
 
 export const getPublicProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('firstName lastName avatar bio roles createdAt');
+    const user = await User.findById(req.params.id).select('firstName lastName avatar bio roles createdAt settings');
     if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const isOwner = req.userId && req.userId === user._id.toString();
+    const isPublic = user.settings?.publicProfile !== false;
+
+    if (!isPublic && !isOwner) {
+      return res.json({
+        user: {
+          firstName: user.firstName,
+          lastName: user.lastName,
+          avatar: user.avatar,
+          roles: user.roles,
+          isPrivate: true,
+        },
+        courses: [],
+        isPrivate: true
+      });
+    }
 
     // Get their published courses
     const Course = (await import('../models/Course.js')).default;
     const courses = await Course.find({ instructor: user._id, status: 'published' })
-      .select('title description category level price rating totalSessions totalEnrollments thumbnail')
+      .select('title description categories level price rating totalSessions totalEnrollments thumbnail type')
       .limit(10);
+    
+    const courseCount = await Course.countDocuments({ instructor: user._id, status: 'published' });
 
     // Get their community posts count
     const { CommunityPost } = await import('../models/Community.js');
-    const postsCount = await CommunityPost.countDocuments({ authorId: user._id });
+    const postCount = await CommunityPost.countDocuments({ authorId: user._id });
 
-    res.json({ user, courses, postsCount });
+    // Get unique student count (for instructors)
+    let studentCount = 0;
+    if (user.roles?.includes('instructor')) {
+      const Enrollment = (await import('../models/Enrollment.js')).default;
+      const instructorCourses = await Course.find({ instructor: user._id }).select('_id');
+      const courseIds = instructorCourses.map(c => c._id);
+      
+      const uniqueStudents = await Enrollment.distinct('userId', { courseId: { $in: courseIds } });
+      studentCount = uniqueStudents.length;
+    }
+
+    res.json({ 
+      user: { 
+        ...user.toObject(), 
+        courseCount, 
+        postCount, 
+        studentCount 
+      }, 
+      courses 
+    });
   } catch (error) {
     console.error('Get public profile error:', error);
     res.status(500).json({ error: 'Failed to fetch profile' });

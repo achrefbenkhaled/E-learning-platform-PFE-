@@ -1,0 +1,109 @@
+@startuml Diagramme_Student_Joined_Courses
+
+left to right direction
+
+' ================= CUSTOM SKINPARAM & STYLING =================
+skinparam BackgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+skinparam actor {
+    BackgroundColor #FFFFFF
+    BorderColor #333333
+    BorderThickness 1.5
+    FontColor #000000
+    FontSize 13
+}
+
+skinparam usecase {
+    BackgroundColor #F2F5F7
+    BorderColor #475569
+    BorderThickness 1.2
+    FontColor #000000
+    FontSize 12
+    ArrowColor #475569
+    ArrowThickness 1.2
+}
+
+skinparam packageStyle rectangle
+skinparam rectangle {
+    BorderColor #475569
+    BorderThickness 1.5
+    FontColor #000000
+    FontSize 14
+    FontStyle bold
+}
+
+skinparam note {
+    BackgroundColor #F8FAFC
+    BorderColor #475569
+    FontColor #000000
+    FontSize 12
+}
+
+' ================= ACTORS =================
+actor "Student" as S
+
+' ================= SYSTEM BOUNDARY =================
+rectangle "Manage Joined Courses" {
+
+    usecase "Manage Joined Courses" as ManageJoined
+
+    ' --- Primary Generalizations ---
+    usecase "Join Course" as JoinCourse
+    usecase "Unenroll from Course" as UnenrollCourse
+    usecase "Access Course" as AccessCourse
+
+    JoinCourse --|> ManageJoined
+    UnenrollCourse --|> ManageJoined
+    AccessCourse --|> ManageJoined
+
+    ' --- Join Course Extensions ---
+    usecase "Enroll for Free" as EnrollFree
+    usecase "Enroll in Paid Course" as EnrollPaid
+    usecase "Join via Code" as JoinCode
+
+    EnrollFree ..> JoinCourse : <<extend>>
+    EnrollPaid ..> JoinCourse : <<extend>>
+    JoinCode ..> JoinCourse : <<extend>>
+
+    ' --- Access Course Generalizations ---
+    usecase "View Course Info" as ViewInfo
+    usecase "Access Sessions" as AccessSessions
+    usecase "Take Final Exam" as FinalExam
+    usecase "Track Progress" as TrackProgress
+    usecase "Access Course Chat" as CourseChat
+
+    ViewInfo --|> AccessCourse
+    AccessSessions --|> AccessCourse
+    FinalExam --|> AccessCourse
+    TrackProgress --|> AccessCourse
+    CourseChat --|> AccessCourse
+
+    ' --- Session Extensions ---
+    usecase "View Session Content" as ViewSession
+    usecase "Mark as Completed" as CompleteSession
+    usecase "Take Session Quiz" as Quiz
+
+    ViewSession ..> AccessSessions : <<extend>>
+    CompleteSession ..> AccessSessions : <<extend>>
+    Quiz ..> AccessSessions : <<extend>>
+
+    ' --- Progress Extensions ---
+    usecase "Download Certificate" as Certificate
+    Certificate ..> TrackProgress : <<extend>>
+
+    ' --- Course Info Extensions ---
+    usecase "Review Course" as Review
+    usecase "Report Course" as ReportCourse
+    
+    Review ..> ViewInfo : <<extend>>
+    ReportCourse ..> ViewInfo : <<extend>>
+
+}
+
+S -- ManageJoined
+
+note "All use cases require Login / Authentication" as AuthNote
+
+@enduml

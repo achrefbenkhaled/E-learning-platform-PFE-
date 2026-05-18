@@ -16,7 +16,16 @@ const ChatRoom = () => {
   const [rooms, setRooms] = useState([]);
   const [courseChannels, setCourseChannels] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
-  const [activeRoom, setActiveRoom] = useState(searchParams.get('room') || 'general');
+  const [activeRoom, setActiveRoom] = useState(() => {
+    const roomParam = searchParams.get('room');
+    const userParam = searchParams.get('userId');
+    if (roomParam) return roomParam;
+    if (userParam && user?._id) {
+      const sorted = [user._id, userParam].sort();
+      return `${sorted[0]}_dm_${sorted[1]}`;
+    }
+    return 'general';
+  });
   const [activeRoomLabel, setActiveRoomLabel] = useState('General');
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -208,10 +217,47 @@ const ChatRoom = () => {
     };
   }, [socket, activeRoom, user]);
 
+  // Handle userId query param to start/join a DM
+  useEffect(() => {
+    const targetUserId = searchParams.get('userId');
+    if (targetUserId && user) {
+      const dmRoomId = getDmRoomId(user._id, targetUserId);
+      if (activeRoom !== dmRoomId) {
+        setActiveRoom(dmRoomId);
+        // Ensure the room exists in dmRooms list for sidebar display
+        setDmRooms(prev => {
+          if (prev.find(r => r.roomId === dmRoomId)) return prev;
+          return [{ roomId: dmRoomId, lastMessage: null, unread: 0 }, ...prev];
+        });
+        setSidebarTab('rooms');
+      }
+    }
+  }, [searchParams, user, activeRoom]);
+
+  // Highlight effect
+  useEffect(() => {
+    const highlightId = searchParams.get('highlight');
+    if (!loading && messages.length > 0 && highlightId) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById(`content-${highlightId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('animate-blink');
+          const removeTimer = setTimeout(() => element.classList.remove('animate-blink'), 3000);
+          return () => clearTimeout(removeTimer);
+        }
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, messages, searchParams]);
+
   // Auto-scroll on new messages
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    const highlightId = searchParams.get('highlight');
+    if (!highlightId) {
+      scrollToBottom();
+    }
+  }, [messages, searchParams]);
 
   const handleSend = (content) => {
     if (!socket || !user) return;
@@ -578,7 +624,7 @@ const ChatRoom = () => {
                 const senderId =
                   typeof msg.senderId === 'object' ? msg.senderId._id : msg.senderId;
                 const isOwn = senderId === user?._id;
-                return <ChatBubble key={msg._id || i} message={msg} isOwn={isOwn} />;
+                return <ChatBubble key={msg._id || i} message={msg} isOwn={isOwn} roomId={activeRoom} />;
               })}
               <div ref={messagesEndRef} />
             </>

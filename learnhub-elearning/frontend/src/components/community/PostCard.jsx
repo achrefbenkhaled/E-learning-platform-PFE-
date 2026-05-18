@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Heart, MessageCircle, Eye, Pin, Clock } from 'lucide-react';
+import { Heart, MessageCircle, Eye, Pin, Clock, ShieldAlert } from 'lucide-react';
 import { timeAgo } from '../../utils/helpers.js';
 import { CATEGORY_COLORS } from '../../utils/constants.js';
+import ReportModal from '../modals/ReportModal.jsx';
 
 const PostCard = ({ post, onLike, currentUserId }) => {
   const navigate = useNavigate();
+  const [showReportModal, setShowReportModal] = useState(false);
   const author = post.authorId || {};
   const isLiked = post.likes?.includes(currentUserId);
   const initial = author.firstName?.charAt(0)?.toUpperCase() || '?';
@@ -59,7 +62,29 @@ const PostCard = ({ post, onLike, currentUserId }) => {
         <span className="flex items-center gap-1.5 text-sm text-txt-muted">
           <Eye className="w-4 h-4" /> {post.views || 0}
         </span>
+        
+        {currentUserId && currentUserId !== author._id && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowReportModal(true);
+            }}
+            className="ml-auto p-1.5 rounded-lg text-txt-muted hover:text-red-400 hover:bg-red-400/10 transition-all"
+            title="Report post"
+          >
+            <ShieldAlert className="w-4 h-4" />
+          </button>
+        )}
       </div>
+
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        contentType="post"
+        contentId={post._id}
+        reportedUser={author._id}
+        contentSnapshot={`TITLE: ${post.title}\n\nCONTENT: ${post.content}`}
+      />
     </div>
   );
 };

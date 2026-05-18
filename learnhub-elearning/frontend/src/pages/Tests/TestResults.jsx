@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Trophy, XCircle, Clock, CheckCircle, HelpCircle, ArrowLeft, Check, X } from 'lucide-react';
 import api from '../../utils/api.js';
+import useAuth from '../../hooks/useAuth.js';
 
 const TestResults = () => {
   const { testId, attemptId } = useParams();
   const navigate = useNavigate();
 
+  const { user } = useAuth();
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -20,6 +22,7 @@ const TestResults = () => {
         const merged = {
           ...(data.attempt || data),
           testTitle: data.testTitle || data.attempt?.testTitle,
+          courseId: data.courseId || data.attempt?.courseId,
           questions: data.results || data.attempt?.responses || [],
         };
         setResult(merged);
@@ -71,6 +74,7 @@ const TestResults = () => {
   const answeredCount = questions.filter(
     (q) => q.userAnswer !== undefined && q.userAnswer !== null && q.userAnswer !== ''
   ).length;
+  const isOwner = user?._id === result?.userId;
 
   // Score circle dimensions
   const radius = 58;
@@ -127,6 +131,18 @@ const TestResults = () => {
           <h1 className="text-2xl font-black text-txt mb-1">
             {result?.testTitle || result?.test?.title || 'Test Results'}
           </h1>
+          
+          {!passed && isOwner && (
+            <div className="mt-6">
+              <button
+                onClick={() => navigate(`/tests/${result.testId || testId}/take`)}
+                className="btn-primary px-8 py-3 bg-red-500 hover:bg-red-600 border-red-700 shadow-brutal flex items-center gap-2 mx-auto"
+              >
+                <HelpCircle className="w-5 h-5" /> Retry Test
+              </button>
+              <p className="text-xs text-txt-muted mt-2">Your previous result will be replaced.</p>
+            </div>
+          )}
         </div>
 
         {/* Stats Grid */}
@@ -223,13 +239,21 @@ const TestResults = () => {
           </div>
         )}
 
-        {/* Back button */}
-        <div className="text-center">
+        {/* Back buttons */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          {passed && result?.courseId && (
+            <button
+              onClick={() => navigate(`/courses/${result.courseId}`)}
+              className="btn-primary w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 border-green-600 animate-bounce-subtle"
+            >
+              <CheckCircle className="w-4 h-4" /> Continue Course
+            </button>
+          )}
           <button
             onClick={() => navigate('/tests')}
-            className="btn-primary inline-flex items-center gap-2"
+            className="btn-secondary w-full sm:w-auto inline-flex items-center justify-center gap-2"
           >
-            <ArrowLeft className="w-4 h-4" /> Back to Tests
+            {result?.courseId ? 'Back to Course' : 'Back to Tests'}
           </button>
         </div>
       </div>

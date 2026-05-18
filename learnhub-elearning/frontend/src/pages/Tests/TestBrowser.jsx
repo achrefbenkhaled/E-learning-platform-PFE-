@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, HelpCircle, Users, Plus, FileQuestion, Trash2, Link2, Eye, CheckCircle, FileEdit, Archive } from 'lucide-react';
+import { Clock, HelpCircle, Users, Plus, FileQuestion, Trash2, Link2, Eye, CheckCircle, FileEdit, Archive, Shield } from 'lucide-react';
 import api from '../../utils/api.js';
 import useAuth from '../../hooks/useAuth.js';
 
@@ -80,6 +80,191 @@ const TestBrowser = () => {
     archived: { label: 'Archived', color: 'red', icon: Archive },
   };
 
+  // Rendering helpers defined inside component to access state/handlers
+  const renderCreatedTest = (test, index, type) => {
+    const cfg = statusConfig[test.status] || statusConfig.draft;
+    const StatusIcon = cfg.icon;
+    const isFinal = type === 'final';
+
+    return (
+      <div
+        key={test._id}
+        ref={(el) => (cardsRef.current[index + (isFinal ? 0 : 100)] = el)} // Offset for uniqueness
+        style={{ opacity: 0 }}
+        className={`bg-surface-card border-2 rounded-2xl p-6 transition-all group relative flex flex-col ${
+          isFinal ? 'border-pink-500/20 hover:border-pink-500/50' : 'border-bdr hover:border-yellow-400/30'
+        }`}
+      >
+        {/* Status Badge */}
+        <div className="flex items-center justify-between mb-3">
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-${cfg.color}-400/10 text-${cfg.color}-400 border border-${cfg.color}-400/20`}>
+            <StatusIcon className="w-3 h-3" />
+            {cfg.label}
+          </span>
+          {isFinal && (
+            <span className="px-2 py-0.5 rounded-md bg-pink-500 text-white text-[10px] font-black uppercase tracking-wider">
+              Secure
+            </span>
+          )}
+        </div>
+
+        {/* Title & Description */}
+        <h3 className={`text-lg font-bold text-txt transition-colors mb-2 line-clamp-1 ${isFinal ? 'group-hover:text-pink-500' : 'group-hover:text-yellow-400'}`}>
+          {test.title}
+        </h3>
+        <p className="text-txt-muted text-sm mb-4 line-clamp-2 flex-1">
+          {test.description || 'No description provided.'}
+        </p>
+
+        {/* Badges */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {test.settings?.duration && (
+            <span className={`badge inline-flex items-center gap-1 ${isFinal ? 'bg-pink-500/10 text-pink-500 border-pink-500/20' : 'badge-accent'}`}>
+              <Clock className="w-3 h-3" /> {test.settings.duration} min
+            </span>
+          )}
+          {test.questions && (
+            <span className="badge badge-purple inline-flex items-center gap-1">
+              <HelpCircle className="w-3 h-3" /> {test.questions.length} questions
+            </span>
+          )}
+          <span className="badge badge-blue inline-flex items-center gap-1">
+            <Users className="w-3 h-3" /> {test.attemptCount || 0} participants
+          </span>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 pt-3 border-t border-bdr">
+          <button
+            onClick={() => copyLink(test._id)}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+              copiedId === test._id
+                ? 'bg-green-400/10 text-green-400 border border-green-400/20'
+                : 'bg-surface-hover text-txt-secondary hover:text-yellow-400 border border-bdr hover:border-yellow-400/30'
+            }`}
+          >
+            <Link2 className="w-3.5 h-3.5" />
+            {copiedId === test._id ? 'Copied!' : 'Copy Link'}
+          </button>
+
+          <button
+            onClick={() => navigate(`/tests/${test._id}/participants`)}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-surface-hover text-txt-secondary border border-bdr transition-all ${
+              isFinal ? 'hover:text-pink-500 hover:border-pink-500/30' : 'hover:text-blue-400 hover:border-blue-400/30'
+            }`}
+          >
+            <Eye className="w-3.5 h-3.5" /> Participants
+          </button>
+
+          <button
+            onClick={() => setDeleteConfirm(test._id)}
+            className="p-2 rounded-lg text-txt-muted hover:text-red-400 hover:bg-red-400/10 border border-transparent hover:border-red-400/20 transition-all"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Delete Confirmation Overlay */}
+        {deleteConfirm === test._id && (
+          <div className="absolute inset-0 bg-surface-card/95 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center gap-3 p-6 z-10 animate-scaleIn">
+            <p className="text-sm font-bold text-txt text-center">Delete this test?</p>
+            <p className="text-xs text-txt-muted text-center">This will permanently delete the test and all its data.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="btn-secondary text-xs px-4 py-1.5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(test._id)}
+                className="btn-danger text-xs px-4 py-1.5"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderAppliedTest = (attempt, index, type) => {
+    const test = attempt.testId;
+    if (!test) return null;
+    const isFinal = type === 'final';
+
+    return (
+      <div
+        key={attempt._id}
+        ref={(el) => (cardsRef.current[index + (isFinal ? 200 : 300)] = el)}
+        style={{ opacity: 0 }}
+        className={`bg-surface-card border-2 rounded-2xl p-6 transition-all group relative flex flex-col ${
+          isFinal ? 'border-pink-500/20 hover:border-pink-500/50' : 'border-bdr hover:border-blue-400/30'
+        }`}
+      >
+        {/* Status Badge */}
+        <div className="flex items-center justify-between mb-3">
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
+            attempt.status === 'in-progress' ? 'bg-blue-400/10 text-blue-400 border border-blue-400/20' : 
+            attempt.passed ? 'bg-green-400/10 text-green-400 border border-green-400/20' : 
+            'bg-red-400/10 text-red-400 border border-red-400/20'
+          }`}>
+            {attempt.status === 'in-progress' ? 'In Progress' : (attempt.passed ? 'Passed' : 'Completed')}
+          </span>
+          {isFinal && (
+            <Shield className="w-4 h-4 text-pink-500/50" />
+          )}
+        </div>
+
+        {/* Title & Description */}
+        <h3 className={`text-lg font-bold text-txt transition-colors mb-2 line-clamp-1 ${isFinal ? 'group-hover:text-pink-500' : 'group-hover:text-blue-400'}`}>
+          {test.title}
+        </h3>
+        <p className="text-txt-muted text-sm mb-4 line-clamp-2 flex-1">
+          Started: {new Date(attempt.startedAt).toLocaleDateString()}
+        </p>
+
+        {/* Badges */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {attempt.score !== undefined && attempt.totalPoints !== undefined && (
+            <span className="badge badge-accent inline-flex items-center gap-1">
+              Score: {attempt.score}/{attempt.totalPoints}
+            </span>
+          )}
+          {attempt.percentage !== undefined && (
+            <span className="badge badge-purple inline-flex items-center gap-1">
+               {attempt.percentage}%
+            </span>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 pt-3 border-t border-bdr">
+          {attempt.status === 'in-progress' ? (
+             <button
+               onClick={() => navigate(`/tests/${test._id}/take`)}
+               className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                 isFinal ? 'bg-pink-500 text-white hover:bg-pink-600' : 'bg-yellow-400 text-black hover:bg-yellow-500'
+               }`}
+             >
+               <Clock className="w-3.5 h-3.5" /> Resume {isFinal ? 'Exam' : 'Test'}
+             </button>
+          ) : (
+             <button
+               onClick={() => navigate(`/tests/results/${attempt._id}`)}
+               className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-surface-hover text-txt-secondary border border-bdr transition-all ${
+                 isFinal ? 'hover:text-pink-500 hover:border-pink-500/30' : 'hover:text-blue-400 hover:border-blue-400/30'
+               }`}
+             >
+               <Eye className="w-3.5 h-3.5" /> View Results
+             </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface">
@@ -110,16 +295,18 @@ const TestBrowser = () => {
         {/* Tabs */}
         <div className="flex gap-4 border-b border-bdr mb-8">
           <button 
-            className={`pb-3 font-semibold transition-colors ${activeTab === 'created' ? 'border-b-2 border-yellow-400 text-yellow-400' : 'text-txt-muted hover:text-txt'}`}
+            className={`pb-3 font-semibold transition-colors relative ${activeTab === 'created' ? 'text-yellow-400' : 'text-txt-muted hover:text-txt'}`}
             onClick={() => setActiveTab('created')}
           >
             Created Tests
+            {activeTab === 'created' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-yellow-400 rounded-t" />}
           </button>
           <button 
-            className={`pb-3 font-semibold transition-colors ${activeTab === 'applied' ? 'border-b-2 border-yellow-400 text-yellow-400' : 'text-txt-muted hover:text-txt'}`}
+            className={`pb-3 font-semibold transition-colors relative ${activeTab === 'applied' ? 'text-yellow-400' : 'text-txt-muted hover:text-txt'}`}
             onClick={() => setActiveTab('applied')}
           >
             Applied Tests
+            {activeTab === 'applied' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-yellow-400 rounded-t" />}
           </button>
         </div>
 
@@ -166,169 +353,73 @@ const TestBrowser = () => {
           </div>
         )}
 
-        {/* Test Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {activeTab === 'created' ? tests.map((test, index) => {
-            const cfg = statusConfig[test.status] || statusConfig.draft;
-            const StatusIcon = cfg.icon;
-
-            return (
-              <div
-                key={test._id}
-                ref={(el) => (cardsRef.current[index] = el)}
-                style={{ opacity: 0 }}
-                className="bg-surface-card border-2 border-bdr rounded-2xl p-6 transition-all hover:border-yellow-400/30 group relative flex flex-col"
-              >
-                {/* Status Badge */}
-                <div className="flex items-center justify-between mb-3">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-${cfg.color}-400/10 text-${cfg.color}-400 border border-${cfg.color}-400/20`}>
-                    <StatusIcon className="w-3 h-3" />
-                    {cfg.label}
-                  </span>
+        {/* Test Sections */}
+        <div className="space-y-12">
+          {activeTab === 'created' ? (
+            <>
+              {/* Created: Final Exams */}
+              {tests.filter(t => t.type === 'final').length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-4 px-1">
+                    <Shield className="w-5 h-5 text-pink-500" />
+                    <h2 className="text-xl font-black text-txt uppercase tracking-tight">Final Exams</h2>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {tests.filter(t => t.type === 'final').map((test, index) => renderCreatedTest(test, index, 'final'))}
+                  </div>
                 </div>
+              )}
 
-                {/* Title & Description */}
-                <h3 className="text-lg font-bold text-txt group-hover:text-yellow-400 transition-colors mb-2 line-clamp-1">
-                  {test.title}
-                </h3>
-                <p className="text-txt-muted text-sm mb-4 line-clamp-2 flex-1">
-                  {test.description || 'No description provided.'}
-                </p>
-
-                {/* Badges */}
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {test.settings?.duration && (
-                    <span className="badge badge-accent inline-flex items-center gap-1">
-                      <Clock className="w-3 h-3" /> {test.settings.duration} min
-                    </span>
-                  )}
-                  {test.questions && (
-                    <span className="badge badge-purple inline-flex items-center gap-1">
-                      <HelpCircle className="w-3 h-3" /> {test.questions.length} questions
-                    </span>
-                  )}
-                  <span className="badge badge-blue inline-flex items-center gap-1">
-                    <Users className="w-3 h-3" /> {test.attemptCount || 0} participants
-                  </span>
+              {/* Created: Quizzes */}
+              <div>
+                <div className="flex items-center gap-2 mb-4 px-1">
+                  <HelpCircle className="w-5 h-5 text-yellow-400" />
+                  <h2 className="text-xl font-black text-txt uppercase tracking-tight">Practice Quizzes</h2>
                 </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 pt-3 border-t border-bdr">
-                  <button
-                    onClick={() => copyLink(test._id)}
-                    className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                      copiedId === test._id
-                        ? 'bg-green-400/10 text-green-400 border border-green-400/20'
-                        : 'bg-surface-hover text-txt-secondary hover:text-yellow-400 border border-bdr hover:border-yellow-400/30'
-                    }`}
-                  >
-                    <Link2 className="w-3.5 h-3.5" />
-                    {copiedId === test._id ? 'Copied!' : 'Copy Link'}
-                  </button>
-
-                  <button
-                    onClick={() => navigate(`/tests/${test._id}/participants`)}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-surface-hover text-txt-secondary hover:text-blue-400 border border-bdr hover:border-blue-400/30 transition-all"
-                  >
-                    <Eye className="w-3.5 h-3.5" /> Participants
-                  </button>
-
-                  <button
-                    onClick={() => setDeleteConfirm(test._id)}
-                    className="p-2 rounded-lg text-txt-muted hover:text-red-400 hover:bg-red-400/10 border border-transparent hover:border-red-400/20 transition-all"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {/* Delete Confirmation Overlay */}
-                {deleteConfirm === test._id && (
-                  <div className="absolute inset-0 bg-surface-card/95 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center gap-3 p-6 z-10 animate-scaleIn">
-                    <p className="text-sm font-bold text-txt text-center">Delete this test?</p>
-                    <p className="text-xs text-txt-muted text-center">This will permanently delete the test and all its data.</p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setDeleteConfirm(null)}
-                        className="btn-secondary text-xs px-4 py-1.5"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => handleDelete(test._id)}
-                        className="btn-danger text-xs px-4 py-1.5"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                {tests.filter(t => t.type !== 'final').length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {tests.filter(t => t.type !== 'final').map((test, index) => renderCreatedTest(test, index, 'quiz'))}
+                  </div>
+                ) : (
+                  <div className="card p-8 text-center bg-surface-card border-dashed">
+                    <p className="text-txt-muted text-sm italic">No practice quizzes found.</p>
                   </div>
                 )}
               </div>
-            );
-          }) : attempts.map((attempt, index) => {
-            const test = attempt.testId;
-            if (!test) return null; // In case test was deleted
-
-            return (
-              <div
-                key={attempt._id}
-                ref={(el) => (cardsRef.current[index] = el)}
-                style={{ opacity: 0 }}
-                className="bg-surface-card border-2 border-bdr rounded-2xl p-6 transition-all hover:border-blue-400/30 group relative flex flex-col"
-              >
-                {/* Status Badge */}
-                <div className="flex items-center justify-between mb-3">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
-                    attempt.status === 'in-progress' ? 'bg-blue-400/10 text-blue-400 border border-blue-400/20' : 
-                    attempt.passed ? 'bg-green-400/10 text-green-400 border border-green-400/20' : 
-                    'bg-red-400/10 text-red-400 border border-red-400/20'
-                  }`}>
-                    {attempt.status === 'in-progress' ? 'In Progress' : (attempt.passed ? 'Passed' : 'Completed')}
-                  </span>
+            </>
+          ) : (
+            <>
+              {/* Applied: Final Exams */}
+              {attempts.filter(a => a.testId?.type === 'final').length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-4 px-1">
+                    <Shield className="w-5 h-5 text-pink-500" />
+                    <h2 className="text-xl font-black text-txt uppercase tracking-tight">Final Exam Results</h2>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {attempts.filter(a => a.testId?.type === 'final').map((attempt, index) => renderAppliedTest(attempt, index, 'final'))}
+                  </div>
                 </div>
+              )}
 
-                {/* Title & Description */}
-                <h3 className="text-lg font-bold text-txt group-hover:text-blue-400 transition-colors mb-2 line-clamp-1">
-                  {test.title}
-                </h3>
-                <p className="text-txt-muted text-sm mb-4 line-clamp-2 flex-1">
-                  Started: {new Date(attempt.startedAt).toLocaleDateString()}
-                </p>
-
-                {/* Badges */}
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {attempt.score !== undefined && attempt.totalPoints !== undefined && (
-                    <span className="badge badge-accent inline-flex items-center gap-1">
-                      Score: {attempt.score}/{attempt.totalPoints}
-                    </span>
-                  )}
-                  {attempt.percentage !== undefined && (
-                    <span className="badge badge-purple inline-flex items-center gap-1">
-                       {attempt.percentage}%
-                    </span>
-                  )}
+              {/* Applied: Quizzes */}
+              <div>
+                <div className="flex items-center gap-2 mb-4 px-1">
+                  <HelpCircle className="w-5 h-5 text-yellow-400" />
+                  <h2 className="text-xl font-black text-txt uppercase tracking-tight">Quiz Attempts</h2>
                 </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 pt-3 border-t border-bdr">
-                  {attempt.status === 'in-progress' ? (
-                     <button
-                       onClick={() => navigate(`/tests/${test._id}/take`)}
-                       className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-yellow-400 text-black hover:bg-yellow-500 transition-all shadow-sm"
-                     >
-                       <Clock className="w-3.5 h-3.5" /> Resume Test
-                     </button>
-                  ) : (
-                     <button
-                       onClick={() => navigate(`/tests/results/${attempt._id}`)}
-                       className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-surface-hover text-txt-secondary hover:text-blue-400 border border-bdr hover:border-blue-400/30 transition-all"
-                     >
-                       <Eye className="w-3.5 h-3.5" /> View Results
-                     </button>
-                  )}
-                </div>
+                {attempts.filter(a => a.testId?.type !== 'final').length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {attempts.filter(a => a.testId?.type !== 'final').map((attempt, index) => renderAppliedTest(attempt, index, 'quiz'))}
+                  </div>
+                ) : (
+                  <div className="card p-8 text-center bg-surface-card border-dashed">
+                    <p className="text-txt-muted text-sm italic">No quiz attempts found.</p>
+                  </div>
+                )}
               </div>
-            );
-          })}
+            </>
+          )}
         </div>
       </div>
     </div>

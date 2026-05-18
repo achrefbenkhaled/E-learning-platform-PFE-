@@ -23,6 +23,18 @@ const InstructorRequestSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    idCard: {
+      type: String,
+      required: true,
+    },
+    cv: {
+      type: String,
+      required: true,
+    },
+    diploma: {
+      type: String,
+      required: true,
+    },
     status: {
       type: String,
       enum: ['pending', 'approved', 'rejected'],

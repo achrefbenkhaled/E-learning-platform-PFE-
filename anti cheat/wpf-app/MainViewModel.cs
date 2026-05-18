@@ -149,13 +149,12 @@ namespace AntiCheatApp
                     throw new InvalidOperationException("No token in response");
 
                 _sessionToken = token;
+
+                // Proctor (main.py) is NOT launched here anymore.
+                // It will be started on-demand by ExamHostWindow when the student clicks "Start Test".
+                StatusDetail = "Environment verified. Waiting for exam to start…";
+
                 Phase = AntiCheatUiPhase.Protected;
-
-                var proctorWarning = ProctorProcessManager.StartProctor();
-                
-                StatusDetail = "Environment verified. Session is bound to this desktop client." + 
-                    (string.IsNullOrEmpty(proctorWarning) ? "" : "\nWarning: " + proctorWarning);
-
                 _heartbeatTimer.Start();
                 _pendingRequestTimer.Start();
                 System.Media.SystemSounds.Asterisk.Play();

@@ -6,11 +6,12 @@ import {
   updateRequestStatus,
 } from '../controllers/instructorRequestController.js';
 import { authMiddleware, roleCheck } from '../middleware/auth.js';
+import { uploadDocuments } from '../middleware/upload.js';
 
 const router = express.Router();
 
 // Student routes
-router.post('/', authMiddleware, roleCheck('student'), createRequest);
+router.post('/', authMiddleware, roleCheck('student'), uploadDocuments, createRequest);
 router.get('/my', authMiddleware, getMyRequest);
 
 // Admin routes

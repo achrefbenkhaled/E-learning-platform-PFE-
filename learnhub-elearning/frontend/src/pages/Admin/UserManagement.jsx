@@ -54,9 +54,16 @@ const UserManagement = () => {
   };
 
   const toggleEditRole = (role) => {
-    setEditRoles((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
-    );
+    setEditRoles((prev) => {
+      if (role === 'admin') {
+        // If selecting admin, it becomes the only role
+        return prev.includes('admin') ? [] : ['admin'];
+      } else {
+        // If selecting another role, remove admin if it exists
+        const next = prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role];
+        return next.filter((r) => r !== 'admin');
+      }
+    });
   };
 
   const saveRoles = async () => {

@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, FileText, Link as LinkIcon, Bell, Globe, Save, Camera, Sun, Moon } from 'lucide-react';
+import { User, Mail, FileText, Link as LinkIcon, Bell, Globe, Save, Camera, Sun, Moon, LayoutGrid } from 'lucide-react';
 import api from '../../utils/api.js';
 import { validateName, validateUrl } from '../../utils/validators.js';
 import useAuth from '../../hooks/useAuth.js';
 import useAuthStore from '../../context/authStore.js';
 import { useTheme } from '../../context/ThemeContext.jsx';
+import AvatarSelector from '../../components/modals/AvatarSelector.jsx';
 
 const Profile = () => {
   const { user } = useAuth();
@@ -22,6 +23,7 @@ const Profile = () => {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
   const [error, setError] = useState('');
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
   // Initialize form with user data
   useEffect(() => {
@@ -80,6 +82,7 @@ const Profile = () => {
     }
   };
 
+
   const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || '?';
 
   return (
@@ -112,40 +115,57 @@ const Profile = () => {
           {/* Avatar Section */}
           <div className="bg-surface-card border-2 border-bdr rounded-2xl p-6">
             <h2 className="text-lg font-bold text-txt mb-4 flex items-center gap-2">
-              <Camera className="w-5 h-5 text-yellow-400" /> Avatar
+              <LayoutGrid className="w-5 h-5 text-yellow-400" /> Character Avatar
             </h2>
-            <div className="flex items-center gap-5">
-              <div className="flex-shrink-0">
-                {avatarUrl ? (
-                  <img
-                    src={avatarUrl}
-                    alt="Avatar"
-                    className="w-20 h-20 rounded-2xl object-cover border-2 border-bdr"
-                    onError={(e) => {
-                      e.target.style.display = 'none';
-                      e.target.nextElementSibling.style.display = 'flex';
-                    }}
-                  />
-                ) : null}
-                <div
-                  className={`w-20 h-20 rounded-2xl bg-yellow-400/10 border-2 border-yellow-400/20 items-center justify-center text-2xl font-black text-yellow-400 ${
-                    avatarUrl ? 'hidden' : 'flex'
-                  }`}
-                >
-                  {initials}
+            <div className="flex flex-col sm:flex-row items-center gap-6">
+              <div className="relative group">
+                <div className="flex-shrink-0">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt="Avatar"
+                      className="w-24 h-24 rounded-3xl object-cover border-4 border-bdr shadow-xl transition-all group-hover:scale-105"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextElementSibling.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <div
+                    className={`w-24 h-24 rounded-3xl bg-yellow-400/10 border-4 border-yellow-400/20 items-center justify-center text-3xl font-black text-yellow-400 shadow-xl transition-all group-hover:scale-105 ${
+                      avatarUrl ? 'hidden' : 'flex'
+                    }`}
+                  >
+                    {initials}
+                  </div>
+                </div>
+                <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-yellow-400 rounded-2xl border-4 border-surface-card flex items-center justify-center cursor-pointer hover:scale-110 active:scale-95 transition-all shadow-lg" onClick={() => setIsAvatarModalOpen(true)}>
+                  <LayoutGrid className="w-5 h-5 text-black" />
                 </div>
               </div>
-              <div className="flex-1">
-                <label className="flex items-center gap-2 text-sm font-semibold text-txt-secondary mb-2">
-                  <LinkIcon className="w-4 h-4 text-txt-muted" /> Avatar URL
-                </label>
-                <input
-                  type="url"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="https://example.com/your-photo.jpg"
-                  className="input-field text-sm"
-                />
+              
+              <div className="flex-1 text-center sm:text-left">
+                <h3 className="font-black text-txt text-lg">Profile Picture</h3>
+                <p className="text-sm text-txt-muted mb-4">Update your avatar to make your profile recognizable</p>
+                <div className="flex flex-wrap justify-center sm:justify-start gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAvatarModalOpen(true)}
+                    className="btn-primary py-2.5 px-6 text-sm flex items-center gap-2 rounded-2xl shadow-lg shadow-yellow-400/10"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                    Change Character
+                  </button>
+                  {avatarUrl && (
+                    <button 
+                      type="button"
+                      onClick={() => setAvatarUrl('')}
+                      className="px-4 py-2 text-sm font-bold text-red-400 hover:bg-red-400/10 rounded-xl transition-all"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -306,6 +326,16 @@ const Profile = () => {
           </div>
         </form>
       </div>
+
+      <AvatarSelector
+        isOpen={isAvatarModalOpen}
+        onClose={() => setIsAvatarModalOpen(false)}
+        onSelect={(url) => {
+          setAvatarUrl(url);
+          setToast('Character selected! Remember to save changes.');
+        }}
+        currentAvatar={avatarUrl}
+      />
     </div>
   );
 };

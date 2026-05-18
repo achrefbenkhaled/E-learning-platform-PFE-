@@ -37,7 +37,7 @@ const Sidebar = ({ activePage, user }) => {
               <Link key={item.to} to={item.to}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                   isActive
-                    ? 'bg-yellow-400/10 text-yellow-400 border-l-2 border-yellow-400 -ml-[2px]'
+                    ? 'bg-indigo-500/10 text-indigo-600 border-l-2 border-indigo-600 -ml-[2px]'
                     : 'text-txt-muted hover:text-txt hover:bg-surface-hover'
                 }`}>
                 <Icon className="w-5 h-5" />
@@ -53,7 +53,7 @@ const Sidebar = ({ activePage, user }) => {
               <Link key={item.to} to={item.to}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                   isActive
-                    ? 'bg-yellow-400/10 text-yellow-400 border-l-2 border-yellow-400 -ml-[2px]'
+                    ? 'bg-indigo-500/10 text-indigo-600 border-l-2 border-indigo-600 -ml-[2px]'
                     : 'text-txt-muted hover:text-txt hover:bg-surface-hover'
                 }`}>
                 <Icon className="w-5 h-5" />
@@ -65,16 +65,31 @@ const Sidebar = ({ activePage, user }) => {
       </nav>
 
       {/* User card at bottom */}
-      <div className="p-3 border-t border-bdr">
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface-card border border-bdr/50">
-          <div className="w-9 h-9 rounded-lg bg-yellow-400 flex items-center justify-center text-black text-sm font-black border-2 border-black flex-shrink-0">
-            {userInitial}
+      <div className="p-4 border-t border-bdr bg-surface-card/30">
+        <Link to="/settings" className="flex items-center gap-3 p-2 rounded-2xl hover:bg-surface-hover transition-all group">
+          <div className="relative">
+            {user?.avatar ? (
+              <img 
+                src={user.avatar} 
+                alt="Avatar" 
+                className="w-10 h-10 rounded-xl object-cover border-2 border-bdr group-hover:border-yellow-400/50 transition-colors"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white text-sm font-black border-2 border-transparent">
+                {userInitial}
+              </div>
+            )}
+            <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-surface rounded-full shadow-sm"></div>
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-txt truncate">{user?.firstName} {user?.lastName}</p>
-            <p className="text-xs text-txt-muted truncate">{user?.roles?.join(', ')}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-black text-txt truncate group-hover:text-yellow-400 transition-colors">
+              {user?.firstName} {user?.lastName}
+            </p>
+            <p className="text-[10px] font-bold text-txt-muted uppercase tracking-wider">
+              {user?.roles?.[0] || 'Student'}
+            </p>
           </div>
-        </div>
+        </Link>
       </div>
     </aside>
   );

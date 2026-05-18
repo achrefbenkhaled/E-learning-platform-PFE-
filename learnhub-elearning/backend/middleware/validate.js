@@ -62,7 +62,7 @@ export const validateLogin = (req, res, next) => {
 
 export const validateCourse = (req, res, next) => {
   const errors = [];
-  const { title, description, category, price, thumbnail } = req.body;
+  const { title, description, categories, price, thumbnail, type } = req.body;
 
   if (!title || sanitize(title).length === 0) errors.push('Title is required');
   else if (sanitize(title).length > 150) errors.push('Title must be 150 characters or less');
@@ -70,9 +70,11 @@ export const validateCourse = (req, res, next) => {
   if (!description || sanitize(description).length === 0) errors.push('Description is required');
   else if (sanitize(description).length > 5000) errors.push('Description must be 5000 characters or less');
 
-  if (!category || sanitize(category).length === 0) errors.push('Category is required');
+  if (!categories || !Array.isArray(categories) || categories.length === 0) {
+    errors.push('At least one category is required');
+  }
 
-  if (price !== undefined && price !== null && price !== '') {
+  if (type !== 'classroom' && price !== undefined && price !== null && price !== '') {
     const p = Number(price);
     if (isNaN(p) || p < 0 || p > 9999) errors.push('Price must be between 0 and 9999');
   }
@@ -83,7 +85,7 @@ export const validateCourse = (req, res, next) => {
 
   req.body.title = sanitize(title);
   req.body.description = sanitize(description);
-  req.body.category = sanitize(category);
+  req.body.categories = categories.map(c => sanitize(c));
   next();
 };
 

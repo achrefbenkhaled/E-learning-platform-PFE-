@@ -9,6 +9,7 @@ const EnrollmentSchema = new mongoose.Schema(
     completedSessions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Session' }],
     lastAccessedAt: { type: Date, default: null },
     status: { type: String, enum: ['active', 'completed', 'paused'], default: 'active' },
+    isBlocked: { type: Boolean, default: false },
     certificateEarned: { type: Boolean, default: false },
     certificateEarnedAt: { type: Date, default: null },
   },

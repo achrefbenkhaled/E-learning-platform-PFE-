@@ -135,7 +135,10 @@ const MyCourses = () => {
 
         {/* Tabs */}
         <div className="flex gap-1 mb-8 border-b border-bdr">
-          {TABS.filter(tab => tab === 'Enrolled Courses' || user?.roles?.includes('instructor')).map((tab) => (
+          {TABS.filter(tab => 
+            (tab === 'Enrolled Courses' && user?.roles?.includes('student')) || 
+            (tab === 'Created Courses' && user?.roles?.includes('instructor'))
+          ).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}

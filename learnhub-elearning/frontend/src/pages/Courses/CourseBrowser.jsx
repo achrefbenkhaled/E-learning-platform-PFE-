@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { gsap } from 'gsap';
-import { Search, BookOpen, SlidersHorizontal, ChevronLeft, ChevronRight, X, Plus } from 'lucide-react';
+import { Search, BookOpen, SlidersHorizontal, ChevronLeft, ChevronRight, X, Plus, Key, Users } from 'lucide-react';
 import api from '../../utils/api.js';
 import { COURSE_CATEGORIES, COURSE_LEVELS } from '../../utils/constants.js';
 import useAuth from '../../hooks/useAuth.js';
@@ -28,6 +28,11 @@ const CourseBrowser = () => {
     level: 'All Levels',
     price: 'All',
   });
+
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [classCode, setClassCode] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState('');
 
   const fetchCourses = useCallback(async () => {
     setLoading(true);
@@ -76,6 +81,22 @@ const CourseBrowser = () => {
     setCurrentPage(1);
   };
 
+  const handleJoinClass = async (e) => {
+    e.preventDefault();
+    if (!classCode.trim()) return;
+    setJoining(true);
+    setJoinError('');
+    try {
+      const res = await api.post('/api/courses/join-class', { code: classCode });
+      setShowJoinModal(false);
+      navigate(`/courses/${res.data.courseId}`);
+    } catch (err) {
+      setJoinError(err.response?.data?.error || 'Invalid class code');
+    } finally {
+      setJoining(false);
+    }
+  };
+
   const hasActiveFilters =
     filters.search || filters.category !== 'All Categories' || filters.level !== 'All Levels' || filters.price !== 'All';
 
@@ -90,16 +111,75 @@ const CourseBrowser = () => {
               Discover courses taught by expert instructors and level up your skills
             </p>
           </div>
-          {user?.roles?.includes('instructor') && (
+          <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={() => navigate('/courses/create')}
-              className="btn-primary inline-flex items-center gap-2 whitespace-nowrap"
+              onClick={() => setShowJoinModal(true)}
+              className="btn-secondary inline-flex items-center gap-2 whitespace-nowrap"
             >
-              <Plus className="w-4 h-4" /> Create Course
+              <Key className="w-4 h-4" /> Join Classroom
             </button>
-          )}
+            {user?.roles?.includes('instructor') && (
+              <button
+                onClick={() => navigate('/courses/create')}
+                className="btn-primary inline-flex items-center gap-2 whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" /> Create Course
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Join Modal */}
+      {showJoinModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
+          <div className="card w-full max-w-md p-8 animate-fadeIn relative">
+            <button 
+              onClick={() => setShowJoinModal(false)}
+              className="absolute top-4 right-4 p-2 rounded-lg text-txt-muted hover:text-txt transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="flex flex-col items-center text-center mb-6">
+              <div className="w-16 h-16 bg-yellow-400 rounded-2xl border-2 border-black flex items-center justify-center shadow-brutal-sm mb-4">
+                <Users className="w-8 h-8 text-black" />
+              </div>
+              <h2 className="text-2xl font-black text-txt">Join Classroom</h2>
+              <p className="text-txt-muted mt-2">Enter the class code provided by your instructor</p>
+            </div>
+
+            <form onSubmit={handleJoinClass} className="space-y-4">
+              <div>
+                <input
+                  type="text"
+                  placeholder="Class Code (e.g. ABC1234)"
+                  value={classCode}
+                  onChange={(e) => setClassCode(e.target.value.toUpperCase())}
+                  className="input-field text-center text-xl font-bold tracking-widest uppercase py-4"
+                  autoFocus
+                  maxLength={7}
+                />
+                {joinError && (
+                  <p className="text-red-400 text-sm mt-2 text-center font-semibold">{joinError}</p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={joining || !classCode}
+                className="btn-primary w-full py-4 text-lg"
+              >
+                {joining ? 'Joining...' : 'Join Now'}
+              </button>
+              
+              <p className="text-xs text-txt-muted text-center px-4">
+                Note: You can only join classrooms that are currently active.
+              </p>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Tab Navigation */}
       <div className="border-b border-bdr">

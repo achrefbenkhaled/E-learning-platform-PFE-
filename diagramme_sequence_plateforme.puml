@@ -1,0 +1,143 @@
+@startuml Sequence_Plateforme_ELearning
+
+skinparam defaultFontName Arial
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 200
+
+skinparam participant {
+  BackgroundColor white
+  BorderColor black
+}
+
+skinparam note {
+  BackgroundColor #FFFFCC
+  BorderColor #999999
+}
+
+title Diagramme de Séquence — Plateforme E-Learning LearnHub
+
+actor Étudiant as S
+actor Instructeur as I
+participant "Frontend\n(React)" as FE
+participant "Backend\n(Node.js)" as BE
+database "MongoDB" as DB
+
+== 1. Inscription & Authentification ==
+
+S -> FE : Remplir formulaire inscription
+FE -> BE : POST /api/auth/register\n{email, password, firstName, lastName}
+BE -> DB : Créer User (role: student)
+DB --> BE : User créé
+BE --> FE : {user, accessToken, refreshToken}
+FE --> S : Rediriger vers Dashboard
+
+== 2. Créer un Cours (Instructeur) ==
+
+I -> FE : Remplir formulaire de cours
+FE -> BE : POST /api/courses\n{title, description, categories, level, price}
+BE -> DB : Créer Course (status: published)
+DB --> BE : Course créé
+BE --> FE : {course}
+FE --> I : Afficher le cours créé
+
+I -> FE : Ajouter une session
+FE -> BE : POST /api/courses/:courseId/sessions\n{title, videoUrl, pdfUrl, order}
+BE -> DB : Créer Session
+DB --> BE : Session créée
+BE --> FE : {session}
+
+I -> FE : Créer un test (quiz ou final)
+FE -> BE : POST /api/tests\n{title, questions[], settings, courseId}
+BE -> DB : Créer Test
+DB --> BE : Test créé
+BE --> FE : {test}
+
+== 3. Inscription à un Cours (Étudiant) ==
+
+S -> FE : Parcourir les cours
+FE -> BE : GET /api/courses?category=&search=
+BE -> DB : Chercher cours publiés
+DB --> BE : Liste de cours
+BE --> FE : {courses[], total}
+FE --> S : Afficher le catalogue
+
+S -> FE : Cliquer "S'inscrire"
+FE -> BE : POST /api/courses/enroll {courseId}
+
+alt Cours gratuit
+  BE -> DB : Créer Enrollment
+  DB --> BE : Enrollment créé
+  BE --> FE : "Inscrit avec succès"
+else Cours payant
+  BE --> FE : {requiresPayment: true, price}
+  S -> FE : Entrer informations de paiement
+  FE -> BE : POST /api/courses/checkout\n{courseId, cardNumber, cvv}
+  BE -> DB : Créer Enrollment
+  DB --> BE : Enrollment créé
+  BE --> FE : "Paiement réussi"
+end
+
+FE --> S : Rediriger vers le cours
+
+== 4. Suivre un Cours ==
+
+S -> FE : Ouvrir une session vidéo
+FE -> BE : GET /api/courses/:id
+BE -> DB : Récupérer course + sessions
+DB --> BE : {course, sessions[]}
+BE --> FE : Données du cours
+
+S -> FE : Regarder la vidéo / lire le PDF
+S -> FE : Marquer session comme terminée
+FE -> BE : POST /api/courses/:courseId/sessions/:sessionId/complete
+BE -> DB : Ajouter à completedSessions\nRecalculer progress
+DB --> BE : {progress}
+BE --> FE : {progress: 60%}
+FE --> S : Mettre à jour barre de progression
+
+== 5. Passer un Quiz ==
+
+S -> FE : Cliquer "Commencer le quiz"
+FE -> BE : POST /api/tests/start {testId}
+BE -> DB : Créer TestAttempt
+DB --> BE : {attemptId, questions[]}
+BE --> FE : Questions (sans réponses correctes)
+FE --> S : Afficher le quiz
+
+S -> FE : Répondre et soumettre
+FE -> BE : POST /api/tests/submit {attemptId, answers}
+BE -> BE : Corriger automatiquement
+BE -> DB : Sauvegarder résultats
+DB --> BE : OK
+BE --> FE : {score, percentage, passed}
+FE --> S : Afficher les résultats
+
+== 6. Communauté ==
+
+S -> FE : Créer un post
+FE -> BE : POST /api/community/posts\n{title, content, category}
+BE -> DB : Créer CommunityPost
+DB --> BE : Post créé
+BE --> FE : {post}
+FE --> S : Afficher le post
+
+S -> FE : Commenter / Liker
+FE -> BE : POST /api/community/posts/:id/comments\n{content}
+BE -> DB : Ajouter Comment au post
+DB --> BE : Post mis à jour
+BE --> FE : {post avec commentaire}
+
+== 7. Messagerie en temps réel ==
+
+S -> FE : Ouvrir le chat
+FE -> BE : GET /api/chat/rooms
+BE --> FE : {rooms[], courseChannels[]}
+S -> FE : Envoyer un message
+FE -> BE : Socket.IO emit("chat:send")\n{roomId, content}
+BE -> DB : Créer ChatMessage
+BE -> FE : Socket.IO emit("chat:message")\n(broadcast au room)
+FE --> S : Afficher le message
+
+@enduml

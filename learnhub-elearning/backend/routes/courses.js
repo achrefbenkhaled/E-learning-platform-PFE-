@@ -18,6 +18,8 @@ import {
   completeSession,
   getCourseStudents,
   removeStudentFromCourse,
+  toggleBlockStudent,
+  joinClassByCode,
 } from '../controllers/courseController.js';
 import { authMiddleware, optionalAuth, roleCheck } from '../middleware/auth.js';
 import { validateCourse, validateReview } from '../middleware/validate.js';
@@ -34,15 +36,17 @@ router.get('/:id', optionalAuth, getCourseDetail);
 router.post('/', authMiddleware, roleCheck('instructor', 'admin'), validateCourse, createCourse);
 router.put('/:id', authMiddleware, roleCheck('instructor', 'admin'), validateCourse, updateCourse);
 router.delete('/:id', authMiddleware, roleCheck('instructor', 'admin'), deleteCourse);
-router.post('/enroll', authMiddleware, enrollCourse);
-router.post('/checkout', authMiddleware, processCheckout);
-router.delete('/enroll/:courseId', authMiddleware, unenrollCourse);
-router.get('/:courseId/progress', authMiddleware, getProgress);
+router.post('/enroll', authMiddleware, roleCheck('student'), enrollCourse);
+router.post('/checkout', authMiddleware, roleCheck('student'), processCheckout);
+router.post('/join-class', authMiddleware, roleCheck('student'), joinClassByCode);
+router.delete('/enroll/:courseId', authMiddleware, roleCheck('student'), unenrollCourse);
+router.get('/:courseId/progress', authMiddleware, roleCheck('student'), getProgress);
 router.post('/:id/reviews', authMiddleware, validateReview, addReview);
 router.post('/:courseId/sessions', authMiddleware, roleCheck('instructor', 'admin'), createSession);
 router.put('/:courseId/sessions/:sessionId', authMiddleware, roleCheck('instructor', 'admin'), updateSession);
 router.delete('/:courseId/sessions/:sessionId', authMiddleware, roleCheck('instructor', 'admin'), deleteSession);
-router.post('/:courseId/sessions/:sessionId/complete', authMiddleware, completeSession);
+router.post('/:courseId/sessions/:sessionId/complete', authMiddleware, roleCheck('student'), completeSession);
+router.post('/:courseId/students/:enrollmentId/toggle-block', authMiddleware, roleCheck('instructor', 'admin'), toggleBlockStudent);
 router.delete('/:courseId/students/:enrollmentId', authMiddleware, removeStudentFromCourse);
 
 export default router;

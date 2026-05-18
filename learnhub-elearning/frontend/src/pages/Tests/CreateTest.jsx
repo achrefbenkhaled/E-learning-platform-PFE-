@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Plus, Trash2, HelpCircle, Star, Clock, Target, ArrowLeft, Shuffle, Eye, Calendar, Camera, Shield } from 'lucide-react';
 import useAuth from '../../hooks/useAuth.js';
 import api from '../../utils/api.js';
@@ -23,11 +23,28 @@ const CreateTest = () => {
   const courseId = searchParams.get('courseId');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [instructorCourses, setInstructorCourses] = useState([]);
+  const [selectedCourseId, setSelectedCourseId] = useState(courseId || '');
 
   // Check if user is instructor
   useEffect(() => {
     if (!isLoading && (!user || !user.roles?.includes('instructor'))) {
       setError('Only instructors can create tests. Please contact an administrator to upgrade your account.');
+      return;
+    }
+
+    const fetchMyCourses = async () => {
+      try {
+        const res = await api.get('/api/courses/my-courses/list');
+        // If the API returns a 'courses' field, use it, otherwise use res.data
+        const coursesData = res.data.courses || res.data;
+        setInstructorCourses(Array.isArray(coursesData) ? coursesData : []);
+      } catch (err) {
+        console.error('Failed to fetch instructor courses:', err);
+      }
+    };
+    if (user?.roles?.includes('instructor')) {
+      fetchMyCourses();
     }
   }, [user, isLoading]);
 
@@ -42,11 +59,85 @@ const CreateTest = () => {
   const [showResults, setShowResults] = useState(true);
   const [scheduledStartTime, setScheduledStartTime] = useState('');
   const [scheduledEndTime, setScheduledEndTime] = useState('');
-  const [requireCamera, setRequireCamera] = useState(false);
   const [requireAntiCheat, setRequireAntiCheat] = useState(false);
+  const [testType, setTestType] = useState('quiz');
+
+  // Handle type change
+  const handleTypeChange = (newType) => {
+    setTestType(newType);
+    if (newType === 'final') {
+      setRequireAntiCheat(true);
+    } else {
+      setRequireAntiCheat(false);
+    }
+  };
+
+  // Format date to YYYY-MM-DDTHH:mm for input
+  const formatDateTimeLocal = (date) => {
+    const pad = (n) => n.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+
+  const handleDurationChange = (e) => {
+    const newDuration = e.target.value;
+    setDuration(newDuration);
+    if (scheduledStartTime && newDuration) {
+      const start = new Date(scheduledStartTime);
+      const end = new Date(start.getTime() + newDuration * 60000);
+      setScheduledEndTime(formatDateTimeLocal(end));
+    }
+  };
+
+  const handleStartTimeChange = (e) => {
+    const newStart = e.target.value;
+    setScheduledStartTime(newStart);
+    if (newStart && duration) {
+      const start = new Date(newStart);
+      const end = new Date(start.getTime() + duration * 60000);
+      setScheduledEndTime(formatDateTimeLocal(end));
+    } else if (newStart && scheduledEndTime) {
+      const start = new Date(newStart);
+      const end = new Date(scheduledEndTime);
+      if (end > start) {
+        setDuration(Math.round((end - start) / 60000));
+      }
+    }
+  };
+
+  const handleEndTimeChange = (e) => {
+    const newEnd = e.target.value;
+    setScheduledEndTime(newEnd);
+    if (scheduledStartTime && newEnd) {
+      const start = new Date(scheduledStartTime);
+      const end = new Date(newEnd);
+      if (end > start) {
+        setDuration(Math.round((end - start) / 60000));
+      }
+    }
+  };
 
   // Questions
+  const location = useLocation();
   const [questions, setQuestions] = useState([emptyQuestion()]);
+
+  // Load AI generated data if available
+  useEffect(() => {
+    if (location.state?.generatedQuestions) {
+      const formatted = location.state.generatedQuestions.map((q, idx) => ({
+        id: Date.now() + idx,
+        type: q.type || 'multiple-choice',
+        text: q.question,
+        points: 1,
+        options: q.options || ['', '', '', ''],
+        correctAnswer: q.correctAnswer ?? 0,
+        correctAnswerText: q.correctAnswerText || '',
+        attachments: [],
+      }));
+      setQuestions(formatted);
+      if (location.state.testTitle) setTitle(location.state.testTitle);
+      if (location.state.testDescription) setDescription(location.state.testDescription);
+    }
+  }, [location.state]);
 
   const addQuestion = () => {
     setQuestions((prev) => [...prev, emptyQuestion()]);
@@ -140,14 +231,14 @@ const CreateTest = () => {
       title: title.trim(),
       description: description.trim(),
       status: 'published',
-      courseId: courseId || undefined,
+      courseId: selectedCourseId || undefined,
+      type: testType,
       settings: {
         duration: Number(duration),
         passingScore: Number(passingScore),
         shuffleQuestions,
         showResults,
-        requireCamera,
-        requireAntiCheat,
+        requireAntiCheat: testType === 'final' ? true : requireAntiCheat,
         scheduledStartTime: scheduledStartTime || undefined,
         scheduledEndTime: scheduledEndTime || undefined,
       },
@@ -169,7 +260,7 @@ const CreateTest = () => {
     try {
       setLoading(true);
       await api.post('/api/tests', payload);
-      navigate(courseId ? `/courses/${courseId}/edit` : '/tests');
+      navigate(selectedCourseId ? `/courses/${selectedCourseId}/edit` : '/tests');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create test.');
     } finally {
@@ -235,6 +326,52 @@ const CreateTest = () => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-8">
+          {/* Test Type */}
+          <div className="bg-surface-card border-2 border-bdr rounded-2xl p-6">
+            <h2 className="text-lg font-bold text-txt mb-4">Test Type</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => handleTypeChange('quiz')}
+                className={`p-4 rounded-xl border-2 text-left transition-all ${
+                  testType === 'quiz'
+                    ? 'border-yellow-400 bg-yellow-400/5 shadow-[4px_4px_0px_0px_rgba(250,204,21,1)]'
+                    : 'border-bdr hover:border-bdr-hover'
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${testType === 'quiz' ? 'bg-yellow-400 text-black' : 'bg-surface border border-bdr text-txt-muted'}`}>
+                    <HelpCircle className="w-6 h-6" />
+                  </div>
+                  <span className="font-black text-txt">Practice Quiz</span>
+                </div>
+                <p className="text-xs text-txt-muted leading-relaxed">
+                  Small quiz linked to lessons for practice. Does not require anti-cheat features.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleTypeChange('final')}
+                className={`p-4 rounded-xl border-2 text-left transition-all ${
+                  testType === 'final'
+                    ? 'border-pink-500 bg-pink-500/5 shadow-[4px_4px_0px_0px_rgba(236,72,153,1)]'
+                    : 'border-bdr hover:border-bdr-hover'
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${testType === 'final' ? 'bg-pink-500 text-white' : 'bg-surface border border-bdr text-txt-muted'}`}>
+                    <Shield className="w-6 h-6" />
+                  </div>
+                  <span className="font-black text-txt">Final Exam</span>
+                </div>
+                <p className="text-xs text-txt-muted leading-relaxed">
+                  Official evaluation at the end of the course. <span className="text-pink-500 font-bold">Requires mandatory anti-cheat/proctoring.</span>
+                </p>
+              </button>
+            </div>
+          </div>
+
           {/* Basic Info */}
           <div className="bg-surface-card border-2 border-bdr rounded-2xl p-6">
             <h2 className="text-lg font-bold text-txt mb-4">Basic Information</h2>
@@ -267,6 +404,31 @@ const CreateTest = () => {
             </div>
           </div>
 
+          {/* Course Association */}
+          <div className="bg-surface-card border-2 border-bdr rounded-2xl p-6">
+            <h2 className="text-lg font-bold text-txt mb-4">Course Association</h2>
+            <div>
+              <label className="block text-sm font-semibold text-txt-secondary mb-2">
+                Link to Course (Optional)
+              </label>
+              <select
+                value={selectedCourseId}
+                onChange={(e) => setSelectedCourseId(e.target.value)}
+                className="input-field"
+              >
+                <option value="">None (Public Test)</option>
+                {instructorCourses.map(c => (
+                  <option key={c._id} value={c._id}>
+                    {c.title}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs text-txt-muted">
+                If linked to a course, only students enrolled in that course will be able to take this test.
+              </p>
+            </div>
+          </div>
+
           {/* Settings */}
           <div className="bg-surface-card border-2 border-bdr rounded-2xl p-6">
             <h2 className="text-lg font-bold text-txt mb-4">Settings</h2>
@@ -279,7 +441,7 @@ const CreateTest = () => {
                   type="number"
                   min={1}
                   value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
+                  onChange={handleDurationChange}
                   className="input-field"
                 />
               </div>
@@ -303,7 +465,7 @@ const CreateTest = () => {
                 <input
                   type="datetime-local"
                   value={scheduledStartTime}
-                  onChange={(e) => setScheduledStartTime(e.target.value)}
+                  onChange={handleStartTimeChange}
                   className="input-field"
                 />
               </div>
@@ -314,7 +476,7 @@ const CreateTest = () => {
                 <input
                   type="datetime-local"
                   value={scheduledEndTime}
-                  onChange={(e) => setScheduledEndTime(e.target.value)}
+                  onChange={handleEndTimeChange}
                   className="input-field"
                 />
               </div>
@@ -354,26 +516,7 @@ const CreateTest = () => {
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-txt-muted" />
                   <span className="text-sm text-txt-secondary">Show results to students after submission</span>
-                </div>
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div
-                  onClick={() => setRequireCamera(!requireCamera)}
-                  className={`relative w-11 h-6 rounded-full transition-colors ${
-                    requireCamera ? 'bg-yellow-400' : 'bg-gray-700'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full shadow transition-transform ${
-                      requireCamera ? 'translate-x-5 bg-black' : 'bg-gray-400'
-                    }`}
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-txt-muted" />
-                  <span className="text-sm text-txt-secondary">Require camera (anti-cheat)</span>
                 </div>
               </label>
               <label className="flex items-center gap-3 cursor-pointer">

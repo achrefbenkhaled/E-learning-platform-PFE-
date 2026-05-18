@@ -18,7 +18,9 @@ const TestSchema = new mongoose.Schema(
     title: { type: String, required: true },
     description: { type: String, default: '' },
     courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Course', default: null },
+    sessionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Session', default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    type: { type: String, enum: ['quiz', 'final'], default: 'quiz' },
     questions: [QuestionSchema],
     settings: {
       duration: { type: Number, required: true },

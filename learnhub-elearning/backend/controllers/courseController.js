@@ -3,14 +3,15 @@ import Session from '../models/Session.js';
 import Enrollment from '../models/Enrollment.js';
 import ChatMessage from '../models/ChatMessage.js';
 import User from '../models/User.js';
+import { TestAttempt } from '../models/Test.js';
 import { escapeRegex } from '../middleware/validate.js';
 
 export const getCourses = async (req, res) => {
   try {
     const { category, level, search, price, minPrice, page = 1, limit = 12 } = req.query;
-    let filter = { status: 'published' };
+    let filter = { status: 'published', type: 'standard' };
 
-    if (category) filter.category = category;
+    if (category) filter.categories = { $in: [category] };
     if (level) filter.level = level.toLowerCase();
     if (price !== undefined) filter.price = Number(price);
     if (minPrice) filter.price = { $gte: Number(minPrice) };
@@ -47,19 +48,42 @@ export const getCourseDetail = async (req, res) => {
 
     const sessions = await Session.find({ courseId: req.params.id }).sort({ order: 1 });
     let userEnrollment = null;
+    let passedTestIds = [];
 
     if (req.userId) {
       userEnrollment = await Enrollment.findOne({ userId: req.userId, courseId: req.params.id });
+      if (userEnrollment) {
+        // Find all passed test attempts for this user
+        const attempts = await TestAttempt.find({ userId: req.userId, passed: true }).select('testId');
+        passedTestIds = attempts.map(a => a.testId.toString());
+      }
     }
 
-    // Ensure the frontend sees an accurate student count.
-    // Compute from Enrollment collection instead of trusting the cached counter.
+    // Determine which sessions are locked
+    let prerequisiteFailed = false;
+    const processedSessions = sessions.map((session, index) => {
+      const sessionObj = session.toObject();
+      let isLocked = false;
+
+      // Rule: Session is locked if ANY previous session had a required test that wasn't passed
+      if (prerequisiteFailed) {
+        isLocked = true;
+      }
+
+      // Check if THIS session has a test that the user hasn't passed yet
+      // If it does, all FUTURE sessions (index + 1, etc.) will be locked
+      if (session.testId && !passedTestIds.includes(session.testId.toString())) {
+        prerequisiteFailed = true;
+      }
+
+      return { ...sessionObj, isLocked };
+    });
+
     const studentCount = await Enrollment.countDocuments({ courseId: req.params.id });
-    // course was loaded with .lean() so it's a plain object; sync the fields the frontend expects.
     course.totalEnrollments = studentCount;
     course.enrollmentCount = studentCount;
 
-    res.json({ course, sessions, enrollment: userEnrollment, studentCount });
+    res.json({ course, sessions: processedSessions, enrollment: userEnrollment, studentCount });
   } catch (error) {
     console.error('Get course detail error:', error);
     res.status(500).json({ error: 'Failed to fetch course' });
@@ -68,22 +92,36 @@ export const getCourseDetail = async (req, res) => {
 
 export const createCourse = async (req, res) => {
   try {
-    const { title, description, category, level, price, thumbnail } = req.body;
+    const { title, description, categories, level, price, thumbnail, language } = req.body;
 
-    if (!title || !description || !category) {
-      return res.status(400).json({ error: 'Required fields missing' });
+    if (!title || !description || !categories || !Array.isArray(categories)) {
+      return res.status(400).json({ error: 'Required fields missing or invalid' });
     }
 
     const course = new Course({
       title,
       description,
-      category,
+      categories,
       level: level ? level.toLowerCase() : 'beginner',
-      price,
+      price: req.body.type === 'classroom' ? 0 : (price || 0),
       thumbnail,
+      language: language || 'English',
       instructor: req.userId,
       status: req.body.status || 'published',
     });
+
+    if (req.body.type === 'classroom') {
+      course.type = 'classroom';
+      // Generate unique 7-character class code
+      let isUnique = false;
+      let code;
+      while (!isUnique) {
+        code = Math.random().toString(36).substring(2, 9).toUpperCase();
+        const existing = await Course.findOne({ classCode: code });
+        if (!existing) isUnique = true;
+      }
+      course.classCode = code;
+    }
 
     await course.save();
     res.status(201).json({ message: 'Course created', course });
@@ -99,12 +137,29 @@ export const updateCourse = async (req, res) => {
     if (!course) return res.status(404).json({ error: 'Course not found' });
     if (course.instructor.toString() !== req.userId) return res.status(403).json({ error: 'Not authorized' });
 
-    const allowed = ['title', 'description', 'category', 'level', 'price', 'thumbnail', 'status'];
-    allowed.forEach(field => {
+    const allowed = ['title', 'description', 'categories', 'level', 'price', 'thumbnail', 'status', 'finalTestId', 'language', 'type', 'classCode'];
+    for (const field of allowed) {
       if (req.body[field] !== undefined) {
-        course[field] = field === 'level' ? req.body[field].toLowerCase() : req.body[field];
+        if (field === 'level') {
+          course[field] = req.body[field].toLowerCase();
+        } else if (field === 'price' && (req.body.type === 'classroom' || course.type === 'classroom')) {
+          course[field] = 0;
+        } else if (field === 'type' && req.body.type === 'classroom' && !course.classCode) {
+          // Generate unique 7-character class code if switching to classroom
+          let isUnique = false;
+          let code;
+          while (!isUnique) {
+            code = Math.random().toString(36).substring(2, 9).toUpperCase();
+            const existing = await Course.findOne({ classCode: code });
+            if (!existing) isUnique = true;
+          }
+          course.classCode = code;
+          course.type = 'classroom';
+        } else {
+          course[field] = req.body[field];
+        }
       }
-    });
+    }
 
     await course.save();
     res.json(course);
@@ -146,7 +201,10 @@ export const enrollCourse = async (req, res) => {
     // Check for duplicate enrollment
     const existingEnrollment = await Enrollment.findOne({ userId: req.userId, courseId });
     if (existingEnrollment) {
-      return res.status(400).json({ error: 'Already enrolled' });
+      if (existingEnrollment.status === 'completed') {
+        return res.status(400).json({ error: 'You have already completed this course and cannot re-enroll.' });
+      }
+      return res.status(400).json({ error: 'Already enrolled in this course.' });
     }
 
     // For paid courses, redirect to checkout
@@ -185,11 +243,61 @@ export const enrollCourse = async (req, res) => {
   }
 };
 
+export const joinClassByCode = async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ error: 'Class code is required' });
+
+    const course = await Course.findOne({ classCode: code.toUpperCase(), type: 'classroom' });
+    if (!course) return res.status(404).json({ error: 'Class not found or invalid code' });
+
+    if (course.instructor.toString() === req.userId) {
+      return res.status(400).json({ error: 'You are the instructor of this class' });
+    }
+
+    // Check duplicate enrollment
+    const existingEnrollment = await Enrollment.findOne({ userId: req.userId, courseId: course._id });
+    if (existingEnrollment) {
+      return res.status(400).json({ error: 'Already joined this class' });
+    }
+
+    const enrollment = new Enrollment({
+      userId: req.userId,
+      courseId: course._id,
+      enrollmentDate: new Date(),
+    });
+
+    await enrollment.save();
+    await Course.findByIdAndUpdate(course._id, { $inc: { totalEnrollments: 1 } });
+
+    // Add join message
+    const joinedUser = await User.findById(req.userId).select('firstName lastName');
+    await ChatMessage.create({
+      senderId: req.userId,
+      roomId: `course_${course._id}`,
+      content: `${joinedUser.firstName} ${joinedUser.lastName} joined the classroom!`,
+    });
+
+    res.status(201).json({ message: 'Joined classroom successfully', courseId: course._id });
+  } catch (error) {
+    console.error('Join class error:', error);
+    res.status(500).json({ error: 'Failed to join class' });
+  }
+};
+
 export const unenrollCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
-    const enrollment = await Enrollment.findOneAndDelete({ userId: req.userId, courseId });
+    const enrollment = await Enrollment.findOne({ userId: req.userId, courseId });
+    
     if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
+    
+    // Prevent unenrollment if course is completed
+    if (enrollment.status === 'completed') {
+      return res.status(400).json({ error: 'You have completed this course and cannot leave it. It will stay in your history.' });
+    }
+
+    await Enrollment.deleteOne({ _id: enrollment._id });
 
     // Decrement totalEnrollments
     await Course.findByIdAndUpdate(courseId, { $inc: { totalEnrollments: -1 } });
@@ -217,7 +325,12 @@ export const processCheckout = async (req, res) => {
 
     // Check duplicate
     const existing = await Enrollment.findOne({ userId: req.userId, courseId });
-    if (existing) return res.status(400).json({ error: 'Already enrolled' });
+    if (existing) {
+      if (existing.status === 'completed') {
+        return res.status(400).json({ error: 'You have already completed this course.' });
+      }
+      return res.status(400).json({ error: 'Already enrolled in this course.' });
+    }
 
     // MVP: Simulate payment processing (always succeeds)
     const paymentId = 'PAY_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -263,6 +376,7 @@ export const getEnrolledCourses = async (req, res) => {
       ...e.courseId.toObject(),
       progress: e.progress,
       status: e.status,
+      isBlocked: e.isBlocked || false,
       enrollmentId: e._id,
     }));
 
@@ -370,6 +484,7 @@ export const createSession = async (req, res) => {
       description: req.body.description || '',
       videoUrl: req.body.videoUrl || '',
       pdfUrl: req.body.pdfUrl || '',
+      testId: req.body.testId || null,
       order: req.body.order || 1,
       duration: req.body.duration || 0,
       isPublished: true,
@@ -390,6 +505,29 @@ export const completeSession = async (req, res) => {
     const { courseId, sessionId } = req.params;
     const enrollment = await Enrollment.findOne({ userId: req.userId, courseId });
     if (!enrollment) return res.status(404).json({ error: 'Not enrolled' });
+    if (enrollment.isBlocked) return res.status(403).json({ error: 'Your access to this course has been restricted by the instructor.' });
+
+    // Check if session is locked by prerequisites
+    const sessions = await Session.find({ courseId }).sort({ order: 1 });
+    const passedAttempts = await TestAttempt.find({ userId: req.userId, passed: true }).select('testId');
+    const passedTestIds = passedAttempts.map(a => a.testId.toString());
+
+    let prerequisiteFailed = false;
+    let isSessionLocked = false;
+
+    for (const session of sessions) {
+      if (session._id.toString() === sessionId) {
+        if (prerequisiteFailed) isSessionLocked = true;
+        break;
+      }
+      if (session.testId && !passedTestIds.includes(session.testId.toString())) {
+        prerequisiteFailed = true;
+      }
+    }
+
+    if (isSessionLocked) {
+      return res.status(403).json({ error: 'This session is locked until you pass the prerequisite tests.' });
+    }
 
     if (!enrollment.completedSessions.some(id => id.toString() === sessionId)) {
       enrollment.completedSessions.push(sessionId);
@@ -400,8 +538,20 @@ export const completeSession = async (req, res) => {
     enrollment.completedSessions = uniqueIds;
 
     const totalSessions = await Session.countDocuments({ courseId });
-    enrollment.progress = totalSessions > 0 ? Math.round((uniqueIds.length / totalSessions) * 100) : 0;
-    if (enrollment.progress >= 100) {
+    const course = await Course.findById(courseId);
+    
+    // Progress calculation
+    let calculatedProgress = totalSessions > 0 ? Math.round((uniqueIds.length / totalSessions) * 100) : 0;
+    
+    // If there's a final exam, cap progress at 99% until it's passed
+    if (course.finalTestId && calculatedProgress >= 100) {
+      calculatedProgress = 99;
+    }
+
+    enrollment.progress = calculatedProgress;
+
+    // Only mark as completed automatically if there's NO final exam
+    if (!course.finalTestId && enrollment.progress >= 100) {
       enrollment.status = 'completed';
       enrollment.certificateEarned = true;
       enrollment.certificateEarnedAt = new Date();
@@ -425,7 +575,7 @@ export const updateSession = async (req, res) => {
     const session = await Session.findOne({ _id: sessionId, courseId });
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    const allowed = ['title', 'videoUrl', 'pdfUrl', 'order', 'duration', 'description'];
+    const allowed = ['title', 'videoUrl', 'pdfUrl', 'testId', 'order', 'duration', 'description'];
     allowed.forEach(field => {
       if (req.body[field] !== undefined) session[field] = req.body[field];
     });
@@ -484,6 +634,7 @@ export const getCourseStudents = async (req, res) => {
       status: e.status,
       completedSessions: e.completedSessions.length,
       certificateEarned: e.certificateEarned,
+      isBlocked: e.isBlocked || false,
     }));
 
     res.json({ students, total: students.length });
@@ -515,5 +666,32 @@ export const removeStudentFromCourse = async (req, res) => {
   } catch (error) {
     console.error('Remove student error:', error);
     res.status(500).json({ error: 'Failed to remove student' });
+  }
+};
+
+export const toggleBlockStudent = async (req, res) => {
+  try {
+    const { courseId, enrollmentId } = req.params;
+
+    // Verify course exists and user is instructor
+    const course = await Course.findById(courseId);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+    if (course.instructor.toString() !== req.userId) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const enrollment = await Enrollment.findById(enrollmentId);
+    if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
+
+    enrollment.isBlocked = !enrollment.isBlocked;
+    await enrollment.save();
+
+    res.json({ 
+      message: enrollment.isBlocked ? 'Student blocked' : 'Student unblocked', 
+      isBlocked: enrollment.isBlocked 
+    });
+  } catch (error) {
+    console.error('Toggle block student error:', error);
+    res.status(500).json({ error: 'Failed to toggle block status' });
   }
 };

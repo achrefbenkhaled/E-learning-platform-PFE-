@@ -5,11 +5,12 @@ import {
   ArrowLeft, BookOpen, Users, Globe, BarChart3,
   Play, FileText, CheckCircle, Lock, Star,
   Clock, LogOut, MessageSquare, Pencil, Layers,
-  Calendar, Timer, ClipboardList, ChevronLeft, ChevronRight, X, Trash2
+  Calendar, Timer, ClipboardList, ChevronLeft, ChevronRight, X, Trash2, Shield, ShieldAlert, Key
 } from 'lucide-react';
 import api from '../../utils/api.js';
 import { getTestStatus, formatCountdownTo } from '../../utils/helpers.js';
 import useAuth from '../../hooks/useAuth.js';
+import ReportModal from '../../components/modals/ReportModal.jsx';
 
 const TABS = ['Overview', 'Sessions', 'Tests', 'Reviews'];
 
@@ -17,6 +18,7 @@ const CourseDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isStudent = user?.roles?.includes('student');
   const heroRef = useRef(null);
   const contentRef = useRef(null);
 
@@ -30,6 +32,7 @@ const CourseDetail = () => {
   const [enrolling, setEnrolling] = useState(false);
   const [progress, setProgress] = useState(0);
   const [completedSessions, setCompletedSessions] = useState(new Set());
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
@@ -44,6 +47,7 @@ const CourseDetail = () => {
   const [students, setStudents] = useState([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
   const [removingStudent, setRemovingStudent] = useState(null);
+  const [blockingStudent, setBlockingStudent] = useState(null);
 
   const fetchCourse = useCallback(async () => {
     setLoading(true);
@@ -84,11 +88,14 @@ const CourseDetail = () => {
     }
   }, [loading, course]);
 
+  const isAdmin = user?.roles?.includes('admin');
   const isEnrolled = !!(enrollment || course?.isEnrolled);
+  const isBlocked = !!(enrollment?.isBlocked || course?.isBlocked) && !isAdmin;
   const isCreator = user && course && (
     course.instructor?._id === user._id ||
     course.instructor === user._id
   );
+  const hasAccess = isEnrolled || isCreator || isAdmin;
 
   // Fetch course tests when Tests tab is active
   const [now, setNow] = useState(new Date());
@@ -139,6 +146,10 @@ const CourseDetail = () => {
 
   const handleEnroll = async () => {
     if (!user) return navigate('/login');
+    if (!isStudent) {
+      setError('Only students can enroll in courses. Please contact support if you believe this is an error.');
+      return;
+    }
     if (course.price > 0) return navigate(`/checkout/${course._id}`);
     try {
       setEnrolling(true);
@@ -218,12 +229,43 @@ const CourseDetail = () => {
     }
   };
 
+  const handleToggleBlock = async (enrollmentId) => {
+    setBlockingStudent(enrollmentId);
+    try {
+      const res = await api.post(`/api/courses/${id}/students/${enrollmentId}/toggle-block`);
+      setStudents(students.map(s => 
+        s.enrollmentId === enrollmentId ? { ...s, isBlocked: res.data.isBlocked } : s
+      ));
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to toggle block status');
+    } finally {
+      setBlockingStudent(null);
+    }
+  };
+
   const openStudentsModal = async () => {
     setShowStudentsModal(true);
     await fetchStudents();
   };
 
-  const firstIncompleteSession = sessions.find((s) => !completedSessions.has(s._id));
+  // Find the best session to "continue" with
+  const getContinueSessionId = () => {
+    if (!sessions || sessions.length === 0) return null;
+
+    // 1. Find the first session that is neither completed nor locked
+    const nextAvailable = sessions.find(s => !completedSessions.has(s._id) && !s.isLocked);
+    if (nextAvailable) return nextAvailable._id;
+
+    // 2. If all incomplete sessions are locked, find the last session they COMPLETED 
+    // (likely where the unpassed test is)
+    const lastCompleted = [...sessions].reverse().find(s => completedSessions.has(s._id));
+    if (lastCompleted) return lastCompleted._id;
+
+    // 3. Fallback to the very first session
+    return sessions[0]._id;
+  };
+
+  const continueSessionId = getContinueSessionId();
 
   if (loading) {
     return (
@@ -268,8 +310,13 @@ const CourseDetail = () => {
               {/* Badges */}
               <div className="flex items-center gap-3 mb-4">
                 <span className="badge badge-accent">{course.level || 'Beginner'}</span>
-                {course.category && (
-                  <span className="badge badge-blue">{course.category}</span>
+                {(course.categories || []).map((cat, i) => (
+                  <span key={i} className="badge badge-blue">{cat}</span>
+                ))}
+                {course.type === 'classroom' && (
+                  <span className="badge bg-yellow-400/10 text-yellow-400 border-yellow-400/30 flex items-center gap-1">
+                    <Users className="w-3 h-3" /> Classroom
+                  </span>
                 )}
               </div>
 
@@ -356,47 +403,124 @@ const CourseDetail = () => {
                   </div>
                   <Link
                     to={
-                      firstIncompleteSession
-                        ? `/courses/${id}/sessions/${firstIncompleteSession._id}`
-                        : sessions.length > 0
-                        ? `/courses/${id}/sessions/${sessions[0]._id}`
-                        : '#'
+                      !isStudent || !continueSessionId
+                        ? '#'
+                        : `/courses/${id}/sessions/${continueSessionId}`
                     }
+                    className={!isStudent || !continueSessionId ? 'cursor-not-allowed opacity-50' : ''}
+                    onClick={(e) => (!isStudent || !continueSessionId) && e.preventDefault()}
                   >
-                    <button className="btn-primary w-full py-3 text-base mb-3">
+                    <button 
+                      className="btn-primary w-full py-3 text-base mb-3"
+                      disabled={!isStudent || isBlocked}
+                      title={!isStudent ? 'Only students can continue learning' : isBlocked ? 'Your access is restricted' : ''}
+                    >
                       <span className="flex items-center justify-center gap-2">
                         <Play className="w-4 h-4" />
-                        Continue Learning
+                        {enrollment?.status === 'completed' ? 'Review Course' : 'Continue Learning'}
                       </span>
                     </button>
                   </Link>
-                  <button
-                    onClick={handleUnenroll}
-                    className="btn-danger w-full py-2.5 text-sm"
-                  >
-                    <span className="flex items-center justify-center gap-2">
-                      <LogOut className="w-4 h-4" />
-                      Leave Course
-                    </span>
-                  </button>
+                  {!isStudent && (
+                    <p className="text-[10px] text-center text-red-400 mb-3 font-semibold">
+                      Only students can access course content
+                    </p>
+                  )}
+                  {isBlocked && (
+                    <p className="text-[10px] text-center text-red-400 mb-3 font-semibold">
+                      Your access to this course has been restricted by the instructor.
+                    </p>
+                  )}
+                  {enrollment?.status === 'completed' ? (
+                    <div className="p-4 bg-green-400/10 border-2 border-green-400/30 rounded-xl mb-3 text-center">
+                      <div className="flex items-center justify-center gap-2 text-green-400 font-bold mb-1">
+                        <CheckCircle className="w-5 h-5" />
+                        Course Completed
+                      </div>
+                      <p className="text-[10px] text-txt-muted italic">
+                        You've finished this course! It will stay in your history permanently.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <button
+                        onClick={handleUnenroll}
+                        className="btn-danger w-full py-2.5 text-sm"
+                      >
+                        <span className="flex items-center justify-center gap-2">
+                          <LogOut className="w-4 h-4" />
+                          Leave Course
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setShowReportModal(true)}
+                        className="w-full py-2 text-xs font-bold text-txt-muted hover:text-red-400 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <ShieldAlert className="w-3.5 h-3.5" />
+                        Report this Course
+                      </button>
+                    </div>
+                  )}
                 </>
               ) : (
-                <button
-                  className="btn-primary w-full py-3 text-base"
-                  onClick={handleEnroll}
-                  disabled={enrolling}
-                >
-                  {enrolling ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-                      Enrolling...
-                    </span>
-                  ) : course.price > 0 ? (
-                    `Enroll for $${course.price}`
+                <div className="space-y-2">
+                  {course.type === 'classroom' ? (
+                    <div className="p-4 bg-surface rounded-xl border-2 border-dashed border-bdr text-center">
+                      <Key className="w-8 h-8 text-txt-muted mx-auto mb-2" />
+                      <p className="text-sm font-bold text-txt">Private Classroom</p>
+                      <p className="text-xs text-txt-muted mt-1">This class is only accessible via a join code.</p>
+                      <button 
+                        onClick={() => navigate('/courses')}
+                        className="btn-secondary w-full mt-4 py-2 text-xs"
+                      >
+                        Back to Courses
+                      </button>
+                    </div>
                   ) : (
-                    'Enroll Now - Free'
+                    <>
+                      <button
+                        className={`btn-primary w-full py-3 text-base ${!isStudent ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        onClick={handleEnroll}
+                        disabled={enrolling || (user && !isStudent)}
+                      >
+                        {enrolling ? (
+                          <span className="flex items-center justify-center gap-2">
+                            <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                            Enrolling...
+                          </span>
+                        ) : course.price > 0 ? (
+                          `Enroll for $${course.price}`
+                        ) : (
+                          'Enroll Now - Free'
+                        )}
+                      </button>
+                      {user && !isStudent && (
+                        <p className="text-[10px] text-center text-red-400 font-semibold">
+                          Only users with the Student role can enroll in courses
+                        </p>
+                      )}
+                    </>
                   )}
-                </button>
+                </div>
+              )}
+
+              {isCreator && course.type === 'classroom' && course.classCode && (
+                <div className="mt-4 p-4 bg-yellow-400/5 rounded-xl border-2 border-yellow-400/20">
+                  <p className="text-[10px] font-bold text-txt-muted uppercase tracking-widest mb-1">Classroom Code</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xl font-black text-yellow-400 tracking-widest">{course.classCode}</p>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(course.classCode);
+                        // showToast is not defined here, but maybe it has a similar mechanism or I can just use alert
+                        alert('Code copied to clipboard!');
+                      }}
+                      className="p-2 rounded-lg hover:bg-yellow-400/10 text-yellow-400 transition-colors"
+                    >
+                      <ClipboardList className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
               )}
 
               <div className="mt-5 pt-5 border-t border-bdr space-y-3 text-sm">
@@ -513,7 +637,7 @@ const CourseDetail = () => {
                     .sort((a, b) => (a.order || 0) - (b.order || 0))
                     .map((session, index) => {
                       const isCompleted = completedSessions.has(session._id);
-                      const isLocked = !isEnrolled && !isCreator;
+                      const isLocked = (!isEnrolled && !isCreator) || (isEnrolled && isBlocked) || session.isLocked;
                       return (
                         <div
                           key={session._id}
@@ -557,6 +681,11 @@ const CourseDetail = () => {
                                   <FileText className="w-3 h-3" /> PDF
                                 </span>
                               )}
+                              {session.testId && (
+                                <span className="text-xs text-blue-400 font-bold flex items-center gap-1 bg-blue-400/10 px-1.5 py-0.5 rounded">
+                                  <ClipboardList className="w-3 h-3" /> Test Required
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -569,12 +698,84 @@ const CourseDetail = () => {
                               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20 text-sm font-semibold flex-shrink-0 transition-colors"
                             >
                               <Play className="w-4 h-4" />
-                              Play
+                              {isAdmin ? 'Review Session' : 'Play'}
                             </Link>
                           )}
                         </div>
                       );
                     })}
+
+                  {/* Integrated Final Exam Item */}
+                  {course.finalTestId && (
+                    (() => {
+                      const allSessionsCompleted = sessions.length > 0 && sessions.every(s => completedSessions.has(s._id));
+                      const isExamLocked = (!isEnrolled && !isCreator) || isBlocked || !allSessionsCompleted;
+                      
+                      return (
+                        <div
+                          className={`flex items-center gap-4 p-5 transition-colors border-t-2 border-pink-500/10 bg-pink-500/5 ${
+                            isExamLocked ? 'opacity-50' : 'hover:bg-pink-500/10'
+                          }`}
+                        >
+                          {/* Shield / Status Icon */}
+                          <div
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-sm font-bold border-2 ${
+                              enrollment?.status === 'completed'
+                                ? 'bg-green-400/10 text-green-400 border-green-400/30'
+                                : 'bg-pink-500/10 text-pink-500 border-pink-500/30'
+                            }`}
+                          >
+                            {enrollment?.status === 'completed' ? (
+                              <CheckCircle className="w-5 h-5" />
+                            ) : (
+                              <Shield className="w-5 h-5" />
+                            )}
+                          </div>
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-black text-txt truncate">Final Assessment</h4>
+                              <span className="px-1.5 py-0.5 rounded bg-pink-500 text-white text-[9px] font-black uppercase tracking-tighter">
+                                Secure
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1">
+                              <span className="text-xs text-txt-muted flex items-center gap-1">
+                                <Timer className="w-3 h-3 text-pink-500/50" /> Final Course Exam
+                              </span>
+                              {!allSessionsCompleted && isEnrolled && !isCreator && (
+                                <span className="text-[10px] text-pink-500 font-bold uppercase flex items-center gap-1 bg-pink-500/10 px-1.5 py-0.5 rounded">
+                                  <Lock className="w-2.5 h-2.5" /> Complete all sessions to unlock
+                                </span>
+                              )}
+                              {allSessionsCompleted && enrollment?.status !== 'completed' && (
+                                <span className="text-xs text-pink-500/70 font-bold flex items-center gap-1">
+                                  <Shield className="w-3 h-3" /> Proctoring Required
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Lock or Take Exam */}
+                          {isExamLocked ? (
+                            <Lock className="w-5 h-5 text-txt-muted flex-shrink-0" />
+                          ) : enrollment?.status === 'completed' ? (
+                            <div className="px-4 py-2 rounded-xl bg-green-400/10 text-green-400 text-xs font-black uppercase tracking-widest border border-green-400/20">
+                              Passed
+                            </div>
+                          ) : (
+                            <Link
+                              to={`/tests/${course.finalTestId?._id || course.finalTestId}/take`}
+                              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-pink-500 text-white hover:bg-pink-600 text-sm font-black shadow-[0_4px_0_0_#db2777] active:shadow-none active:translate-y-1 transition-all flex-shrink-0"
+                            >
+                              Start Exam
+                            </Link>
+                          )}
+                        </div>
+                      );
+                    })()
+                  )}
                 </div>
               )}
             </div>
@@ -710,12 +911,21 @@ const CourseDetail = () => {
                           </div>
                         </div>
                         {testStatus === 'open' && (isEnrolled || isCreator) && (
-                          <button
-                            onClick={() => navigate(`/tests/${test._id}/take`)}
-                            className="btn-primary text-sm px-4 py-2 flex-shrink-0"
-                          >
-                            Take Test
-                          </button>
+                          <div className="flex flex-col items-end gap-1">
+                            <button
+                              onClick={() => (isStudent && !isBlocked) ? navigate(`/tests/${test._id}/take`) : null}
+                              disabled={!isStudent || isBlocked}
+                              className={`btn-primary text-sm px-4 py-2 flex-shrink-0 ${(!isStudent || isBlocked) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                              Take Test
+                            </button>
+                            {!isStudent && (
+                              <span className="text-[10px] text-red-400 font-semibold">Students only</span>
+                            )}
+                            {isBlocked && (
+                              <span className="text-[10px] text-red-400 font-semibold">Access Restricted</span>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -729,8 +939,8 @@ const CourseDetail = () => {
         {/* Reviews Tab */}
         {activeTab === 'Reviews' && (
           <div className="animate-fadeIn">
-            {/* Review Form - only for enrolled users */}
-            {isEnrolled && (
+            {/* Review Form - only for enrolled users who are not blocked */}
+            {isEnrolled && !isBlocked && (
               <form onSubmit={handleReviewSubmit} className="card p-6 mb-6">
                 <h3 className="text-lg font-bold text-txt mb-4">Write a Review</h3>
                 <div className="flex items-center gap-1 mb-4">
@@ -861,18 +1071,36 @@ const CourseDetail = () => {
                           </div>
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleRemoveStudent(student.enrollmentId)}
-                        disabled={removingStudent === student.enrollmentId}
-                        className="ml-3 p-2 rounded-lg text-red-400 hover:bg-red-400/10 disabled:opacity-50 transition-colors"
-                        title="Remove student"
-                      >
-                        {removingStudent === student.enrollmentId ? (
-                          <div className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin" />
-                        ) : (
-                          <Trash2 className="w-4 h-4" />
-                        )}
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleToggleBlock(student.enrollmentId)}
+                          disabled={blockingStudent === student.enrollmentId}
+                          className={`p-2 rounded-lg transition-colors ${
+                            student.isBlocked 
+                              ? 'bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20' 
+                              : 'text-txt-muted hover:bg-surface-hover'
+                          }`}
+                          title={student.isBlocked ? 'Unblock student' : 'Block student'}
+                        >
+                          {blockingStudent === student.enrollmentId ? (
+                            <div className="w-4 h-4 border-2 border-txt-muted/30 border-t-txt-muted rounded-full animate-spin" />
+                          ) : (
+                            <Lock className={`w-4 h-4 ${student.isBlocked ? 'fill-current' : ''}`} />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleRemoveStudent(student.enrollmentId)}
+                          disabled={removingStudent === student.enrollmentId}
+                          className="p-2 rounded-lg text-red-400 hover:bg-red-400/10 disabled:opacity-50 transition-colors"
+                          title="Remove student"
+                        >
+                          {removingStudent === student.enrollmentId ? (
+                            <div className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -881,6 +1109,15 @@ const CourseDetail = () => {
           </div>
         </div>
       )}
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        contentType="course" 
+        contentId={id}
+        reportedUser={course.instructor?._id || course.instructor}
+        contentSnapshot={`Course: ${course.title}`}
+      />
     </div>
   );
 };

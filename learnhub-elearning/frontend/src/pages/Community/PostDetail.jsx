@@ -1,22 +1,27 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../utils/api';
 import { timeAgo, formatDate } from '../../utils/helpers.js';
 import { CATEGORY_COLORS } from '../../utils/constants.js';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { ArrowLeft, Heart, MessageCircle, Eye, Clock, Pin, Send } from 'lucide-react';
+import { ArrowLeft, Heart, MessageCircle, Eye, Clock, Pin, Send, ShieldAlert } from 'lucide-react';
 import gsap from 'gsap';
+import ReportModal from '../../components/modals/ReportModal.jsx';
 
 const PostDetail = () => {
   const { postId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('highlight');
   const { user } = useAuth();
 
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportConfig, setReportConfig] = useState(null);
 
   const postCardRef = useRef(null);
   const commentsRef = useRef(null);
@@ -36,6 +41,22 @@ const PostDetail = () => {
       );
     }
   }, [loading, post]);
+
+  // Highlight effect
+  useEffect(() => {
+    if (!loading && post && highlightId) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById(`content-${highlightId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('animate-blink');
+          const removeTimer = setTimeout(() => element.classList.remove('animate-blink'), 3000);
+          return () => clearTimeout(removeTimer);
+        }
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, post, highlightId]);
 
   useEffect(() => {
     const fetchPost = async () => {
@@ -128,7 +149,11 @@ const PostDetail = () => {
         </button>
 
         {/* Post Card */}
-        <div ref={postCardRef} className="bg-surface-card border-2 border-bdr rounded-2xl p-6 mb-6">
+        <div 
+          ref={postCardRef} 
+          id={`content-${post._id}`}
+          className="bg-surface-card border-2 border-bdr rounded-2xl p-6 mb-6"
+        >
           {/* Author Info */}
           <div className="flex items-start gap-4 mb-5">
             <div className="w-11 h-11 rounded-xl bg-yellow-400/10 flex items-center justify-center text-yellow-400 text-sm font-bold flex-shrink-0">
@@ -186,6 +211,24 @@ const PostDetail = () => {
               <Eye className="w-4 h-4" />
               <span>{post.views || 0} Views</span>
             </div>
+
+            {user?._id && user._id !== author._id && (
+              <button
+                onClick={() => {
+                  setReportConfig({
+                    type: 'post',
+                    id: post._id,
+                    reportedUser: author._id,
+                    snapshot: `TITLE: ${post.title}\n\nCONTENT: ${post.content}`
+                  });
+                  setShowReportModal(true);
+                }}
+                className="ml-auto p-1.5 rounded-lg text-txt-muted hover:text-red-400 hover:bg-red-400/10 transition-all"
+                title="Report post"
+              >
+                <ShieldAlert className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -238,6 +281,7 @@ const PostDetail = () => {
                 return (
                   <div
                     key={c._id}
+                    id={`content-${c._id}`}
                     className="bg-surface-card border-2 border-bdr rounded-xl p-4 hover:border-bdr-hover transition-colors"
                   >
                     <div className="flex items-start gap-3">
@@ -256,6 +300,25 @@ const PostDetail = () => {
                         </div>
                         <p className="text-sm text-txt-secondary leading-relaxed">{c.content}</p>
                       </div>
+
+                      {user?._id && user._id !== cAuthor._id && (
+                        <button
+                          onClick={() => {
+                            setReportConfig({
+                              type: 'comment',
+                              id: c._id,
+                              reportedUser: cAuthor._id,
+                              snapshot: `POST: ${post.title}\nCOMMENT: ${c.content}`,
+                              metadata: { postId: post._id }
+                            });
+                            setShowReportModal(true);
+                          }}
+                          className="p-1.5 rounded-lg text-txt-muted hover:text-red-400 hover:bg-red-400/10 transition-all"
+                          title="Report comment"
+                        >
+                          <ShieldAlert className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -264,6 +327,21 @@ const PostDetail = () => {
           )}
         </div>
       </div>
+
+      {reportConfig && (
+        <ReportModal
+          isOpen={showReportModal}
+          onClose={() => {
+            setShowReportModal(false);
+            setReportConfig(null);
+          }}
+          contentType={reportConfig.type}
+          contentId={reportConfig.id}
+          reportedUser={reportConfig.reportedUser}
+          contentSnapshot={reportConfig.snapshot}
+          metadata={reportConfig.metadata}
+        />
+      )}
     </div>
   );
 };

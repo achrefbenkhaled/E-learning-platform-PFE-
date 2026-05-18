@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ShieldAlert } from 'lucide-react';
+import ReportModal from '../modals/ReportModal.jsx';
 
 const formatTime = (date) => {
   return new Date(date).toLocaleTimeString('en-US', {
@@ -6,12 +9,13 @@ const formatTime = (date) => {
   });
 };
 
-const ChatBubble = ({ message, isOwn }) => {
+const ChatBubble = ({ message, isOwn, roomId }) => {
+  const [showReportModal, setShowReportModal] = useState(false);
   const sender = message.senderId || {};
   const initial = sender.firstName?.charAt(0)?.toUpperCase() || '?';
 
   return (
-    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-3`}>
+    <div id={`content-${message._id}`} className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-3`}>
       <div className={`flex gap-2 max-w-[75%] ${isOwn ? 'flex-row-reverse' : ''}`}>
         {!isOwn && (
           <Link to={sender._id ? `/users/${sender._id}` : '#'} className="flex-shrink-0 mt-1">
@@ -35,11 +39,32 @@ const ChatBubble = ({ message, isOwn }) => {
           }`}>
             {message.content}
           </div>
-          <p className={`text-[10px] text-txt-muted mt-1 ${isOwn ? 'text-right mr-1' : 'ml-1'}`}>
-            {formatTime(message.createdAt || message.timestamp)}
-          </p>
+          <div className={`flex items-center gap-2 mt-1 ${isOwn ? 'justify-end mr-1' : 'ml-1'}`}>
+            <p className="text-[10px] text-txt-muted">
+              {formatTime(message.createdAt || message.timestamp)}
+            </p>
+            {!isOwn && (
+              <button 
+                onClick={() => setShowReportModal(true)}
+                className="p-0.5 rounded text-txt-muted hover:text-red-400 hover:bg-red-400/10 transition-all"
+                title="Report message"
+              >
+                <ShieldAlert className="w-3 h-3" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        contentType="chat"
+        contentId={message._id}
+        reportedUser={sender._id}
+        contentSnapshot={message.content}
+        metadata={{ roomId }}
+      />
     </div>
   );
 };

@@ -4,6 +4,8 @@ import { LoadingSpinner } from './components/LoadingSpinner.jsx';
 import { SocketProvider } from './context/SocketContext.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import Layout from './components/common/Layout.jsx';
+import useAuthStore from './context/authStore.js';
+import { useEffect } from 'react';
 
 // Auth pages
 import { Login } from './pages/Login.jsx';
@@ -58,7 +60,10 @@ import UserProfile from './pages/UserProfile.jsx';
 const ProtectedRoute = ({ children, requiredRole }) => {
   const { isAuthenticated, isLoading, user } = useAuth();
 
-  if (isLoading) {
+  const params = new URLSearchParams(window.location.search);
+  const hasUrlTokens = params.get('accessToken') && params.get('refreshToken');
+
+  if (isLoading || (hasUrlTokens && !isAuthenticated)) {
     return (
       <div className="h-screen bg-surface flex items-center justify-center">
         <LoadingSpinner />
@@ -66,7 +71,7 @@ const ProtectedRoute = ({ children, requiredRole }) => {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !hasUrlTokens) {
     return <Navigate to="/login" />;
   }
 
@@ -99,6 +104,22 @@ const AppLayout = ({ children, activePage }) => {
 };
 
 function App() {
+  // Global SSO Token Sync
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlAccessToken = params.get('accessToken');
+    const urlRefreshToken = params.get('refreshToken');
+
+    if (urlAccessToken && urlRefreshToken) {
+      localStorage.setItem('accessToken', urlAccessToken);
+      localStorage.setItem('refreshToken', urlRefreshToken);
+      useAuthStore.setState({ 
+        accessToken: urlAccessToken, 
+        refreshToken: urlRefreshToken 
+      });
+    }
+  }, []);
+
   return (
     <ThemeProvider>
       <SocketProvider>

@@ -4,7 +4,7 @@ import { gsap } from 'gsap';
 import {
   ArrowLeft, Plus, ChevronUp, ChevronDown, Trash2,
   BookOpen, Image, DollarSign, Globe, Layers, GripVertical, Save,
-  ClipboardList, Calendar, ChevronRight, X, CheckCircle, AlertTriangle
+  ClipboardList, Calendar, ChevronRight, X, CheckCircle, AlertTriangle, Sparkles, Shield, Clock, HelpCircle, Users, Lock
 } from 'lucide-react';
 import api from '../../utils/api.js';
 import { COURSE_CATEGORIES, COURSE_LEVELS } from '../../utils/constants.js';
@@ -19,8 +19,9 @@ const EditCourse = () => {
 
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
-    title: '', description: '', category: 'Development', level: 'Beginner',
+    title: '', description: '', categories: [], level: 'Beginner',
     price: 0, thumbnail: '', language: 'English', status: 'draft',
+    finalTestId: '', type: 'standard', classCode: '',
   });
   const [sessions, setSessions] = useState([]);
   const [deletedSessionIds, setDeletedSessionIds] = useState([]);
@@ -38,10 +39,16 @@ const EditCourse = () => {
 
   // Toast notification
   const [toast, setToast] = useState(null); // { type: 'success'|'error', message: '' }
-  const showToast = (type, message) => {
+  const showToast = useCallback((type, message) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
+
+  // Students state
+  const [students, setStudents] = useState([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [blockingStudent, setBlockingStudent] = useState(null);
+  const [activeTab, setActiveTab] = useState('details'); // 'details', 'sessions', 'tests', 'students'
 
   const fetchCourse = useCallback(async () => {
     try {
@@ -51,12 +58,15 @@ const EditCourse = () => {
       setForm({
         title: c.title || '',
         description: c.description || '',
-        category: c.category || 'Development',
+        categories: c.categories || (c.category ? [c.category] : []),
         level: c.level ? c.level.charAt(0).toUpperCase() + c.level.slice(1) : 'Beginner',
         price: c.price || 0,
         thumbnail: c.thumbnail || '',
         language: c.language || 'English',
         status: c.status || 'draft',
+        finalTestId: c.finalTestId || '',
+        type: c.type || 'standard',
+        classCode: c.classCode || '',
       });
       const sorted = (sessionData || []).sort((a, b) => (a.order || 0) - (b.order || 0));
       setSessions(sorted.map((s) => ({
@@ -64,6 +74,7 @@ const EditCourse = () => {
         title: s.title || '',
         videoUrl: s.videoUrl || '',
         pdfUrl: s.pdfUrl || '',
+        testId: s.testId || '',
         order: s.order || 1,
       })));
     } catch (err) {
@@ -95,10 +106,53 @@ const EditCourse = () => {
     }
   }, [loading]);
 
+  const fetchStudents = useCallback(async () => {
+    setStudentsLoading(true);
+    try {
+      const res = await api.get(`/api/courses/${id}/students`);
+      setStudents(res.data.students || []);
+    } catch (err) {
+      showToast('error', 'Failed to fetch students');
+    } finally {
+      setStudentsLoading(false);
+    }
+  }, [id, showToast]);
+
+  useEffect(() => {
+    if (activeTab === 'students') {
+      fetchStudents();
+    }
+  }, [activeTab, fetchStudents]);
+
+  const handleToggleBlock = async (enrollmentId) => {
+    setBlockingStudent(enrollmentId);
+    try {
+      const res = await api.post(`/api/courses/${id}/students/${enrollmentId}/toggle-block`);
+      setStudents(prev => prev.map(s => 
+        s.enrollmentId === enrollmentId ? { ...s, isBlocked: res.data.isBlocked } : s
+      ));
+      showToast('success', res.data.isBlocked ? 'Student blocked' : 'Student unblocked');
+    } catch (err) {
+      showToast('error', 'Failed to toggle block status');
+    } finally {
+      setBlockingStudent(null);
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: name === 'price' ? Number(value) : value }));
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }));
+  };
+
+  const handleCategoryToggle = (cat) => {
+    setForm(prev => {
+      const categories = prev.categories.includes(cat)
+        ? prev.categories.filter(c => c !== cat)
+        : [...prev.categories, cat];
+      return { ...prev, categories };
+    });
+    if (errors.categories) setErrors(prev => ({ ...prev, categories: '' }));
   };
 
   const handleSessionChange = (index, field, value) => {
@@ -110,7 +164,7 @@ const EditCourse = () => {
   };
 
   const addSession = () => {
-    setSessions((prev) => [...prev, { title: '', videoUrl: '', pdfUrl: '', order: prev.length + 1 }]);
+    setSessions((prev) => [...prev, { title: '', videoUrl: '', pdfUrl: '', testId: '', order: prev.length + 1 }]);
   };
 
   const removeSession = (index) => {
@@ -182,12 +236,54 @@ const EditCourse = () => {
     }
   };
 
+  const [generatingAI, setGeneratingAI] = useState(null); // sessionId or index
+  const [aiModal, setAiModal] = useState({ isOpen: false, sessionIndex: null, numQuestions: 5, questionType: 'multiple-choice' });
+
+  const openAiModal = (index) => {
+    const session = sessions[index];
+    if (!session.pdfUrl) {
+      showToast('error', 'Please provide a PDF URL first');
+      return;
+    }
+    setAiModal({ isOpen: true, sessionIndex: index, numQuestions: 5, questionType: 'multiple-choice' });
+  };
+
+  const handleGenerateAI = async () => {
+    const { sessionIndex, numQuestions, questionType } = aiModal;
+    const session = sessions[sessionIndex];
+    
+    setGeneratingAI(sessionIndex);
+    setAiModal({ ...aiModal, isOpen: false });
+    
+    try {
+      const res = await api.post('/api/tests/generate', { 
+        pdfUrl: session.pdfUrl,
+        numQuestions: Number(numQuestions),
+        questionType
+      });
+      const { questions } = res.data;
+      
+      navigate(`/tests/create?courseId=${id}`, { 
+        state: { 
+          generatedQuestions: questions,
+          testTitle: `Test: ${session.title}`,
+          testDescription: `AI-generated test based on the session: ${session.title}`
+        } 
+      });
+    } catch (err) {
+      showToast('error', err.response?.data?.error || 'AI generation failed');
+    } finally {
+      setGeneratingAI(null);
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
     const titleErr = validateTitle(form.title, 150);
     if (titleErr) newErrors.title = titleErr;
     const descErr = validateDescription(form.description, 5000);
     if (descErr) newErrors.description = descErr;
+    if (!form.categories || form.categories.length === 0) newErrors.categories = 'Select at least one category';
     const priceErr = validatePrice(form.price);
     if (priceErr) newErrors.price = priceErr;
     if (form.thumbnail) {
@@ -218,7 +314,10 @@ const EditCourse = () => {
     setSuccess('');
 
     try {
-      await api.put(`/api/courses/${id}`, form);
+      await api.put(`/api/courses/${id}`, {
+        ...form,
+        finalTestId: form.finalTestId || null,
+      });
 
       // Delete removed sessions
       for (const sessionId of deletedSessionIds) {
@@ -230,11 +329,19 @@ const EditCourse = () => {
         if (session.title.trim()) {
           if (session._id) {
             await api.put(`/api/courses/${id}/sessions/${session._id}`, {
-              title: session.title, videoUrl: session.videoUrl, pdfUrl: session.pdfUrl, order: session.order,
+              title: session.title, 
+              videoUrl: session.videoUrl, 
+              pdfUrl: session.pdfUrl, 
+              testId: session.testId || null,
+              order: session.order,
             });
           } else {
             await api.post(`/api/courses/${id}/sessions`, {
-              title: session.title, videoUrl: session.videoUrl, pdfUrl: session.pdfUrl, order: session.order,
+              title: session.title, 
+              videoUrl: session.videoUrl, 
+              pdfUrl: session.pdfUrl, 
+              testId: session.testId || null,
+              order: session.order,
             });
           }
         }
@@ -248,6 +355,102 @@ const EditCourse = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const renderTestItem = (test) => {
+    const isExpanded = expandedTest === test._id;
+    const windows = test.settings?.scheduleWindows || [];
+    const isFinal = test.type === 'final';
+
+    return (
+      <div key={test._id} className={`border-2 rounded-xl overflow-hidden bg-surface transition-all ${
+        isFinal ? 'border-pink-500/20 hover:border-pink-500/40' : 'border-bdr hover:border-yellow-400/30'
+      }`}>
+        {/* Test header row */}
+        <div
+          className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-card transition-colors"
+          onClick={() => setExpandedTest(isExpanded ? null : test._id)}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <ChevronRight className={`w-4 h-4 text-txt-muted flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-txt truncate">{test.title}</h4>
+                {isFinal && (
+                  <span className="px-1.5 py-0.5 rounded bg-pink-500 text-white text-[9px] font-black uppercase tracking-tighter">
+                    Secure
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-txt-muted">
+                {test.questions?.length || 0} questions &middot; {windows.length} schedule window{windows.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className={`badge text-xs ${test.status === 'published' ? 'bg-green-400/10 text-green-400 border-green-400/30' : 'bg-orange-400/10 text-orange-400 border-orange-400/30'}`}>
+              {test.status}
+            </span>
+            <button type="button" onClick={(e) => { e.stopPropagation(); deleteTest(test._id); }}
+              className="p-1.5 rounded-lg text-txt-muted hover:text-red-400 hover:bg-red-400/5 transition-colors"
+              disabled={testActionLoading === test._id} title="Delete test">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Expanded: schedule windows */}
+        {isExpanded && (
+          <div className="border-t border-bdr p-4 space-y-4">
+            <h5 className="text-sm font-semibold text-txt-secondary flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-yellow-400" /> Schedule Windows
+            </h5>
+
+            {windows.length === 0 ? (
+              <p className="text-xs text-txt-muted">No schedule windows — test is always accessible.</p>
+            ) : (
+              <div className="space-y-2">
+                {windows.map((w, wi) => (
+                  <div key={wi} className="flex items-center justify-between p-3 rounded-lg bg-surface-card border border-bdr text-sm">
+                    <div className="text-txt-secondary text-xs sm:text-sm">
+                      <span className="font-medium text-txt">{new Date(w.startTime).toLocaleString()}</span>
+                      <span className="mx-2 text-txt-muted">&rarr;</span>
+                      <span className="font-medium text-txt">{new Date(w.endTime).toLocaleString()}</span>
+                    </div>
+                    <button type="button" onClick={() => removeScheduleWindow(test._id, wi)}
+                      className="p-1 rounded text-txt-muted hover:text-red-400 transition-colors"
+                      disabled={testActionLoading === test._id}>
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add window form */}
+            <div className="flex flex-col sm:flex-row items-end gap-3 p-3 rounded-lg bg-yellow-400/5 border border-yellow-400/20">
+              <div className="flex-1 w-full">
+                <label className="block text-[10px] font-bold text-txt-muted uppercase mb-1">Start</label>
+                <input type="datetime-local" value={newWindow.startTime}
+                  onChange={(e) => setNewWindow(prev => ({ ...prev, startTime: e.target.value }))}
+                  className="input-field py-1.5 text-xs w-full" />
+              </div>
+              <div className="flex-1 w-full">
+                <label className="block text-[10px] font-bold text-txt-muted uppercase mb-1">End</label>
+                <input type="datetime-local" value={newWindow.endTime}
+                  onChange={(e) => setNewWindow(prev => ({ ...prev, endTime: e.target.value }))}
+                  className="input-field py-1.5 text-xs w-full" />
+              </div>
+              <button type="button" onClick={() => addScheduleWindow(test._id)}
+                className="btn-primary text-xs px-4 py-2 whitespace-nowrap"
+                disabled={testActionLoading === test._id || !newWindow.startTime || !newWindow.endTime}>
+                {testActionLoading === test._id ? 'Adding...' : 'Add Window'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   if (loading) {
@@ -280,22 +483,60 @@ const EditCourse = () => {
       )}
 
       <div className="border-b border-bdr">
-        <div className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-black text-txt">Edit Course</h1>
             <p className="text-txt-muted mt-1">Update your course details and sessions</p>
           </div>
-          <button onClick={() => navigate(`/courses/${id}`)} className="btn-ghost flex items-center gap-2">
-            <ArrowLeft className="w-4 h-4" />
-            Back to Course
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate(`/courses/${id}`)} className="btn-ghost flex items-center gap-2">
+              <ArrowLeft className="w-4 h-4" />
+              View Course
+            </button>
+            <button onClick={handleSubmit} disabled={submitting} className="btn-primary flex items-center gap-2">
+              <Save className="w-4 h-4" />
+              {submitting ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs Row */}
+      <div className="border-b border-bdr bg-surface-card sticky top-0 z-20">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex gap-4">
+            <button
+              onClick={() => setActiveTab('details')}
+              className={`py-4 text-sm font-bold border-b-2 transition-all ${activeTab === 'details' ? 'border-yellow-400 text-yellow-400' : 'border-transparent text-txt-muted hover:text-txt'}`}
+            >
+              Course Details
+            </button>
+            <button
+              onClick={() => setActiveTab('sessions')}
+              className={`py-4 text-sm font-bold border-b-2 transition-all ${activeTab === 'sessions' ? 'border-yellow-400 text-yellow-400' : 'border-transparent text-txt-muted hover:text-txt'}`}
+            >
+              Sessions & Content
+            </button>
+            <button
+              onClick={() => setActiveTab('tests')}
+              className={`py-4 text-sm font-bold border-b-2 transition-all ${activeTab === 'tests' ? 'border-yellow-400 text-yellow-400' : 'border-transparent text-txt-muted hover:text-txt'}`}
+            >
+              Course Tests
+            </button>
+            <button
+              onClick={() => setActiveTab('students')}
+              className={`py-4 text-sm font-bold border-b-2 transition-all ${activeTab === 'students' ? 'border-yellow-400 text-yellow-400' : 'border-transparent text-txt-muted hover:text-txt'}`}
+            >
+              Students & Access
+            </button>
+          </div>
         </div>
       </div>
 
       <div ref={formRef} className="max-w-7xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
-            <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-8">
+          {activeTab === 'details' && (
+            <form onSubmit={handleSubmit} className="space-y-6 animate-fadeIn">
               {submitError && (
                 <div className="p-4 bg-red-400/10 border border-red-400/20 rounded-xl">
                   <p className="text-red-400 text-sm">{submitError}</p>
@@ -336,11 +577,25 @@ const EditCourse = () => {
                     {errors.description && <p className="text-red-400 text-sm mt-1">{errors.description}</p>}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-txt-secondary mb-2">Category</label>
-                      <select name="category" value={form.category} onChange={handleChange} className="input-field">
-                        {COURSE_CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-                      </select>
+                    <div className="lg:col-span-2">
+                      <label className="block text-sm font-semibold text-txt-secondary mb-3">Categories</label>
+                      <div className="flex flex-wrap gap-2">
+                        {COURSE_CATEGORIES.map((cat) => (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => handleCategoryToggle(cat)}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold border-2 transition-all ${
+                              form.categories.includes(cat)
+                                ? 'bg-yellow-400 border-black text-black shadow-brutal-sm'
+                                : 'bg-surface border-bdr text-txt-muted hover:border-txt-secondary'
+                            }`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
+                      {errors.categories && <p className="text-red-400 text-sm mt-2">{errors.categories}</p>}
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-txt-secondary mb-2">Level</label>
@@ -350,15 +605,17 @@ const EditCourse = () => {
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-txt-secondary mb-2 flex items-center gap-1">
-                        <DollarSign className="w-4 h-4 text-yellow-400" /> Price ($)
-                      </label>
-                      <input name="price" type="number" min="0" step="0.01" value={form.price} onChange={handleChange}
-                        className={`input-field ${errors.price ? 'border-red-400' : ''}`} />
-                      {errors.price && <p className="text-red-400 text-sm mt-1">{errors.price}</p>}
-                    </div>
-                    <div>
+                    {form.type !== 'classroom' && (
+                      <div>
+                        <label className="block text-sm font-semibold text-txt-secondary mb-2 flex items-center gap-1">
+                          <DollarSign className="w-4 h-4 text-yellow-400" /> Price ($)
+                        </label>
+                        <input name="price" type="number" min="0" step="0.01" value={form.price} onChange={handleChange}
+                          className={`input-field ${errors.price ? 'border-red-400' : ''}`} />
+                        {errors.price && <p className="text-red-400 text-sm mt-1">{errors.price}</p>}
+                      </div>
+                    )}
+                    <div className={form.type === 'classroom' ? 'md:col-span-2' : ''}>
                       <label className="block text-sm font-semibold text-txt-secondary mb-2 flex items-center gap-1">
                         <Globe className="w-4 h-4 text-yellow-400" /> Language
                       </label>
@@ -379,10 +636,91 @@ const EditCourse = () => {
                       <option value="published">Published</option>
                     </select>
                   </div>
+
+                  {/* Course Type (Read-only in edit for now, or changeable) */}
+                  <div className="p-4 bg-surface rounded-xl border-2 border-bdr">
+                    <label className="block text-sm font-semibold text-txt-secondary mb-3">Course Access Type</label>
+                    <div className="flex items-center gap-4">
+                      <div className={`flex-1 p-3 rounded-lg border-2 flex items-center gap-3 ${form.type === 'standard' ? 'border-yellow-400 bg-yellow-400/5' : 'border-bdr opacity-50'}`}>
+                        <Globe className="w-4 h-4 text-yellow-400" />
+                        <span className="text-sm font-bold">Standard</span>
+                      </div>
+                      <div className={`flex-1 p-3 rounded-lg border-2 flex items-center gap-3 ${form.type === 'classroom' ? 'border-yellow-400 bg-yellow-400/5' : 'border-bdr opacity-50'}`}>
+                        <Users className="w-4 h-4 text-yellow-400" />
+                        <span className="text-sm font-bold">Classroom</span>
+                      </div>
+                    </div>
+                    {form.type === 'classroom' && form.classCode && (
+                      <div className="mt-4 p-4 bg-yellow-400/5 rounded-xl border border-yellow-400/20 flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold text-txt-muted uppercase tracking-widest">Class Access Code</p>
+                          <p className="text-xl font-black text-yellow-400 tracking-widest">{form.classCode}</p>
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(form.classCode);
+                            showToast('success', 'Class code copied to clipboard!');
+                          }}
+                          className="btn-secondary py-2 px-4 text-xs flex items-center gap-2"
+                        >
+                          <ClipboardList className="w-3.5 h-3.5" />
+                          Copy Code
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Sessions Card */}
+              {/* Final Exam Designation - Moved into details tab */}
+              <div className="card p-6 border-2 border-pink-500/20 bg-pink-500/5">
+                <h2 className="text-lg font-bold text-txt mb-4 flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-pink-500" />
+                  Course Final Exam
+                </h2>
+                <div className="space-y-4">
+                  <p className="text-sm text-txt-secondary leading-relaxed">
+                    Select the definitive exam for this course. This test will be required for course completion and <span className="text-pink-500 font-bold underline">must</span> be an anti-cheat enabled "Final Exam" type.
+                  </p>
+                  <div>
+                    <label className="block text-xs font-bold text-txt-muted uppercase mb-2">Designate Final Exam</label>
+                    <select
+                      value={form.finalTestId}
+                      onChange={(e) => setForm(prev => ({ ...prev, finalTestId: e.target.value }))}
+                      className="input-field border-pink-500/30 focus:border-pink-500"
+                    >
+                      <option value="">No final exam designated</option>
+                      {courseTests.filter(t => t.type === 'final').map(test => (
+                        <option key={test._id} value={test._id}>
+                          {test.title} (Requires Anti-Cheat)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button type="submit" className="btn-primary px-10 py-3 text-base flex items-center gap-2" disabled={submitting}>
+                  {submitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-5 h-5" />
+                      Save Details
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {activeTab === 'sessions' && (
+            <div className="space-y-6 animate-fadeIn">
               <div className="card p-6">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-lg font-bold text-txt flex items-center gap-2">
@@ -429,8 +767,52 @@ const EditCourse = () => {
                         </div>
                         <input placeholder="Video URL (YouTube, Vimeo, etc.)" value={session.videoUrl}
                           onChange={(e) => handleSessionChange(index, 'videoUrl', e.target.value)} className="input-field" />
-                        <input placeholder="PDF URL (optional)" value={session.pdfUrl}
-                          onChange={(e) => handleSessionChange(index, 'pdfUrl', e.target.value)} className="input-field" />
+                        <div className="flex gap-2">
+                          <input placeholder="PDF URL (Google Drive, etc.)" value={session.pdfUrl}
+                            onChange={(e) => handleSessionChange(index, 'pdfUrl', e.target.value)} className="input-field flex-1" />
+                          <button
+                            type="button"
+                            onClick={() => openAiModal(index)}
+                            disabled={!session.pdfUrl || generatingAI === index}
+                            className={`px-4 rounded-xl border-2 font-bold text-xs transition-all flex items-center gap-2 whitespace-nowrap ${
+                              session.pdfUrl 
+                                ? 'bg-yellow-400 border-black text-black hover:shadow-brutal active:translate-x-[2px] active:translate-y-[2px] active:shadow-none' 
+                                : 'bg-surface border-bdr text-txt-muted cursor-not-allowed'
+                            }`}
+                          >
+                            {generatingAI === index ? (
+                              <div className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                            ) : (
+                              <Sparkles className="w-3 h-3" />
+                            )}
+                            Generate Test
+                          </button>
+                        </div>
+                        
+                        {/* Test Selection */}
+                        <div className="pt-2 border-t border-bdr mt-2">
+                          <label className="block text-[10px] font-bold text-txt-muted uppercase mb-1">Link Test to Session (Prerequisite for next session)</label>
+                          <select 
+                            value={session.testId || ''} 
+                            onChange={(e) => handleSessionChange(index, 'testId', e.target.value)}
+                            className="input-field py-1.5 text-xs"
+                          >
+                            <option value="">No test required</option>
+                            <optgroup label="Practice Quizzes">
+                              {courseTests.filter(t => t.type !== 'final').map(test => (
+                                <option key={test._id} value={test._id}>{test.title}</option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Final Exams (Proctored)">
+                              {courseTests.filter(t => t.type === 'final').map(test => (
+                                <option key={test._id} value={test._id}>{test.title} (Secure)</option>
+                              ))}
+                            </optgroup>
+                          </select>
+                          <p className="text-[10px] text-txt-muted mt-1 italic">
+                            * Students must pass this test to view Session {index + 2}.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -440,9 +822,28 @@ const EditCourse = () => {
                     </div>
                   )}
                 </div>
+                
+                <div className="flex justify-end mt-8">
+                  <button onClick={handleSubmit} className="btn-primary px-10 py-3 text-base flex items-center gap-2" disabled={submitting}>
+                    {submitting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-5 h-5" />
+                        Save Session Changes
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
+            </div>
+          )}
 
-              {/* Course Tests Card */}
+          {activeTab === 'tests' && (
+            <div className="animate-fadeIn space-y-6">
               <div className="card p-6">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-lg font-bold text-txt flex items-center gap-2">
@@ -464,160 +865,177 @@ const EditCourse = () => {
                     No tests yet. Click "Add Test" to create one for this course.
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {courseTests.map((test) => {
-                      const isExpanded = expandedTest === test._id;
-                      const windows = test.settings?.scheduleWindows || [];
-                      return (
-                        <div key={test._id} className="border-2 border-bdr rounded-xl overflow-hidden bg-surface">
-                          {/* Test header row */}
-                          <div
-                            className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-card transition-colors"
-                            onClick={() => setExpandedTest(isExpanded ? null : test._id)}
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <ChevronRight className={`w-4 h-4 text-txt-muted flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                              <div className="min-w-0">
-                                <h4 className="text-sm font-bold text-txt truncate">{test.title}</h4>
-                                <p className="text-xs text-txt-muted">
-                                  {test.questions?.length || 0} questions &middot; {windows.length} schedule window{windows.length !== 1 ? 's' : ''}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <span className={`badge text-xs ${test.status === 'published' ? 'bg-green-400/10 text-green-400 border-green-400/30' : 'bg-orange-400/10 text-orange-400 border-orange-400/30'}`}>
-                                {test.status}
-                              </span>
-                              <button type="button" onClick={(e) => { e.stopPropagation(); deleteTest(test._id); }}
-                                className="p-1.5 rounded-lg text-txt-muted hover:text-red-400 hover:bg-red-400/5 transition-colors"
-                                disabled={testActionLoading === test._id} title="Delete test">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Expanded: schedule windows */}
-                          {isExpanded && (
-                            <div className="border-t border-bdr p-4 space-y-4">
-                              <h5 className="text-sm font-semibold text-txt-secondary flex items-center gap-1.5">
-                                <Calendar className="w-4 h-4 text-yellow-400" /> Schedule Windows
-                              </h5>
-
-                              {windows.length === 0 ? (
-                                <p className="text-xs text-txt-muted">No schedule windows — test is always accessible.</p>
-                              ) : (
-                                <div className="space-y-2">
-                                  {windows.map((w, wi) => (
-                                    <div key={wi} className="flex items-center justify-between p-3 rounded-lg bg-surface-card border border-bdr text-sm">
-                                      <div className="text-txt-secondary">
-                                        <span className="font-medium text-txt">{new Date(w.startTime).toLocaleString()}</span>
-                                        <span className="mx-2 text-txt-muted">&rarr;</span>
-                                        <span className="font-medium text-txt">{new Date(w.endTime).toLocaleString()}</span>
-                                      </div>
-                                      <button type="button" onClick={() => removeScheduleWindow(test._id, wi)}
-                                        className="p-1 rounded text-txt-muted hover:text-red-400 transition-colors"
-                                        disabled={testActionLoading === test._id}>
-                                        <X className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              {/* Add window form */}
-                              <div className="flex flex-col sm:flex-row items-end gap-3 p-3 rounded-lg bg-yellow-400/5 border border-yellow-400/20">
-                                <div className="flex-1 w-full">
-                                  <label className="block text-xs font-semibold text-txt-secondary mb-1">Start</label>
-                                  <input type="datetime-local" value={newWindow.startTime}
-                                    onChange={(e) => setNewWindow(prev => ({ ...prev, startTime: e.target.value }))}
-                                    className="input-field py-1.5 text-sm w-full" />
-                                </div>
-                                <div className="flex-1 w-full">
-                                  <label className="block text-xs font-semibold text-txt-secondary mb-1">End</label>
-                                  <input type="datetime-local" value={newWindow.endTime}
-                                    onChange={(e) => setNewWindow(prev => ({ ...prev, endTime: e.target.value }))}
-                                    className="input-field py-1.5 text-sm w-full" />
-                                </div>
-                                <button type="button" onClick={() => addScheduleWindow(test._id)}
-                                  className="btn-primary text-sm px-4 py-2 whitespace-nowrap"
-                                  disabled={testActionLoading === test._id || !newWindow.startTime || !newWindow.endTime}>
-                                  {testActionLoading === test._id ? 'Adding...' : 'Add Window'}
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                  <div className="space-y-8">
+                    {/* Final Exams Section */}
+                    {courseTests.filter(t => t.type === 'final').length > 0 && (
+                      <div className="animate-fadeIn">
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                          <Shield className="w-4 h-4 text-pink-500" />
+                          <h3 className="text-xs font-black text-txt uppercase tracking-tight">Final Exams</h3>
                         </div>
-                      );
-                    })}
+                        <div className="space-y-3">
+                          {courseTests.filter(t => t.type === 'final').map((test) => renderTestItem(test))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Quizzes Section */}
+                    <div className="animate-fadeIn">
+                      <div className="flex items-center gap-2 mb-3 px-1">
+                        <HelpCircle className="w-4 h-4 text-yellow-400" />
+                        <h3 className="text-xs font-black text-txt uppercase tracking-tight">Practice Quizzes</h3>
+                      </div>
+                      <div className="space-y-3">
+                        {courseTests.filter(t => t.type !== 'final').length > 0 ? (
+                          courseTests.filter(t => t.type !== 'final').map((test) => renderTestItem(test))
+                        ) : (
+                          <div className="p-6 border-2 border-dashed border-bdr rounded-xl text-center bg-surface-hover">
+                            <p className="text-xs text-txt-muted italic">No practice quizzes found.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
+            </div>
+          )}
 
-              {/* Submit */}
-              <div className="flex items-center gap-4">
-                <button type="submit" className="btn-primary px-8 py-3 text-base flex items-center gap-2" disabled={submitting}>
-                  {submitting ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      Save Changes
-                    </>
-                  )}
-                </button>
-                <button type="button" onClick={() => navigate(`/courses/${id}`)} className="btn-secondary px-8 py-3 text-base">
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
+          {activeTab === 'students' && (
+            <div className="animate-fadeIn space-y-6">
+              <div className="card p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-bold text-txt flex items-center gap-2">
+                    <Users className="w-5 h-5 text-yellow-400" />
+                    Enrolled Students ({students.length})
+                  </h2>
+                  <button type="button" onClick={fetchStudents} className="btn-secondary text-xs py-2 px-4">
+                    Refresh List
+                  </button>
+                </div>
 
-          {/* Preview Card */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-8">
-              <h3 className="text-sm font-bold text-txt-muted uppercase tracking-wide mb-4">Preview</h3>
-              <div className="card overflow-hidden hover:shadow-brutal transition-all duration-300">
-                <div className="h-44 bg-surface border-b border-bdr overflow-hidden flex items-center justify-center">
-                  {form.thumbnail ? (
-                    <img src={form.thumbnail} alt="Preview" className="w-full h-full object-cover"
-                      onError={(e) => { e.target.style.display = 'none'; }} />
-                  ) : (
-                    <Image className="w-12 h-12 text-txt-muted" />
-                  )}
-                </div>
-                <div className="p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="badge badge-accent">{form.level}</span>
-                    <span className="badge badge-blue">{form.category}</span>
-                    <span className={`badge ${form.status === 'published' ? 'bg-green-400/10 text-green-400 border-green-400/30' : 'bg-orange-400/10 text-orange-400 border-orange-400/30'}`}>
-                      {form.status}
-                    </span>
+                {studentsLoading ? (
+                  <div className="flex justify-center py-20">
+                    <div className="w-8 h-8 border-[3px] border-bdr border-t-yellow-400 rounded-full animate-spin" />
                   </div>
-                  <h3 className="text-lg font-bold text-txt mb-1.5 line-clamp-1">{form.title || 'Course Title'}</h3>
-                  <p className="text-txt-muted text-sm mb-4 line-clamp-2">{form.description || 'Course description...'}</p>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-lg font-black text-yellow-400">
-                      {form.price === 0 ? 'Free' : `$${form.price}`}
-                    </span>
-                    <span className="text-sm text-txt-muted">{sessions.length} sessions</span>
+                ) : students.length === 0 ? (
+                  <div className="text-center py-20 bg-surface rounded-2xl border-2 border-dashed border-bdr">
+                    <Users className="w-12 h-12 text-txt-muted mx-auto mb-3" />
+                    <h3 className="text-lg font-bold text-txt">No Students Yet</h3>
+                    <p className="text-txt-muted">Students will appear here once they enroll in your course.</p>
                   </div>
-                  <div className="flex items-center gap-2 pt-3 border-t border-bdr">
-                    <div className="w-6 h-6 rounded-md bg-yellow-400/10 flex items-center justify-center text-yellow-400 text-[10px] font-bold">
-                      {(user?.firstName || 'Y')[0]}
-                    </div>
-                    <span className="text-xs text-txt-secondary">
-                      {user?.firstName ? `${user.firstName} ${user.lastName || ''}` : 'You'}
-                    </span>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {students.map(student => (
+                      <div key={student.enrollmentId} className="p-4 bg-surface rounded-xl border-2 border-bdr flex items-center justify-between group hover:border-yellow-400/30 transition-all">
+                        <div className="flex items-center gap-3 min-w-0">
+                          {student.avatar ? (
+                            <img src={student.avatar} alt="" className="w-10 h-10 rounded-full object-cover" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-yellow-400/10 flex items-center justify-center text-yellow-400 font-bold border border-yellow-400/20">
+                              {student.firstName?.[0] || 'S'}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-bold text-txt text-sm truncate">{student.firstName} {student.lastName}</p>
+                            <p className="text-[10px] text-txt-muted truncate mb-1">{student.email}</p>
+                            <div className="flex gap-2">
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-surface-card border border-bdr text-txt-secondary">
+                                {student.progress}% Progress
+                              </span>
+                              {student.isBlocked && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-400/10 text-red-400 border border-red-400/20 flex items-center gap-1">
+                                  <Lock className="w-2.5 h-2.5" /> Blocked
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleBlock(student.enrollmentId)}
+                          disabled={blockingStudent === student.enrollmentId}
+                          className={`p-2 rounded-lg transition-all ${
+                            student.isBlocked 
+                              ? 'bg-red-400/10 text-red-400 border border-red-400/20' 
+                              : 'bg-surface-card text-txt-muted hover:text-yellow-400 border border-bdr hover:border-yellow-400/30'
+                          }`}
+                        >
+                          {blockingStudent === student.enrollmentId ? (
+                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Lock className={`w-4 h-4 ${student.isBlocked ? 'fill-current' : ''}`} />
+                          )}
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                </div>
+                )}
               </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* AI Configuration Modal */}
+      {aiModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-surface-card border-2 border-bdr rounded-2xl p-6 w-full max-w-sm shadow-brutal animate-scaleIn">
+            <h3 className="text-xl font-black text-txt mb-4 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-yellow-400" />
+              Generate Test with AI
+            </h3>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-semibold text-txt-secondary mb-2">
+                  Number of Questions
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={aiModal.numQuestions}
+                  onChange={(e) => setAiModal({ ...aiModal, numQuestions: e.target.value })}
+                  className="input-field"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-semibold text-txt-secondary mb-2">
+                  Question Type
+                </label>
+                <select
+                  value={aiModal.questionType}
+                  onChange={(e) => setAiModal({ ...aiModal, questionType: e.target.value })}
+                  className="input-field"
+                >
+                  <option value="multiple-choice">Multiple Choice</option>
+                  <option value="short-answer">Short Answer</option>
+                  <option value="mixed">Mixed (Both)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setAiModal({ ...aiModal, isOpen: false })}
+                className="btn-secondary px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleGenerateAI}
+                className="btn-primary px-4 py-2 text-sm flex items-center gap-2"
+              >
+                Generate
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
