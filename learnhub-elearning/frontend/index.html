@@ -1,13 +1,58 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LearnHub - E-Learning Platform</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LearnHub - E-Learning Platform</title>
+
+  <!-- SEO Meta Tags -->
+  <meta name="description"
+    content="LearnHub is a modern e-learning platform. Browse courses, take tests, join communities, and earn certificates. Start learning today." />
+  <meta name="keywords" content="e-learning, online courses, education, LearnHub, certificates, tests" />
+  <meta name="author" content="LearnHub" />
+  <meta name="robots" content="index, follow" />
+
+  <!-- Open Graph / Social Sharing -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="LearnHub - E-Learning Platform" />
+  <meta property="og:description"
+    content="Browse courses, take tests, join communities, and earn certificates on LearnHub." />
+  <meta property="og:site_name" content="LearnHub" />
+
+  <!-- Theme Color -->
+  <meta name="theme-color" content="#6366f1" />
+  <meta name="color-scheme" content="light dark" />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+
+  <!-- Preconnect to Google Fonts for faster loading -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <!-- Load Inter font with display=swap for instant text rendering -->
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
+
+  <!-- Inline critical CSS to eliminate render-blocking -->
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #root {
+      min-height: 100vh;
+    }
+  </style>
+</head>
+
+<body>
+  <noscript>You need to enable JavaScript to run this app.</noscript>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+
 </html>

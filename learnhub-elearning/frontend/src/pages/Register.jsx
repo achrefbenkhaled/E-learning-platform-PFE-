@@ -144,11 +144,12 @@ export const Register = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-semibold text-txt-secondary mb-2">First Name</label>
+                <label htmlFor="reg-firstname" className="block text-sm font-semibold text-txt-secondary mb-2">First Name</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" aria-hidden="true" />
                   <input
                     type="text"
+                    id="reg-firstname"
                     name="firstName"
                     placeholder="John"
                     value={formData.firstName}
@@ -160,11 +161,12 @@ export const Register = () => {
                 {errors.firstName && <p className="text-red-400 text-sm mt-1">{errors.firstName}</p>}
               </div>
               <div>
-                <label className="block text-sm font-semibold text-txt-secondary mb-2">Last Name</label>
+                <label htmlFor="reg-lastname" className="block text-sm font-semibold text-txt-secondary mb-2">Last Name</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" aria-hidden="true" />
                   <input
                     type="text"
+                    id="reg-lastname"
                     name="lastName"
                     placeholder="Doe"
                     value={formData.lastName}
@@ -178,11 +180,12 @@ export const Register = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-txt-secondary mb-2">Email</label>
+              <label htmlFor="reg-email" className="block text-sm font-semibold text-txt-secondary mb-2">Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" aria-hidden="true" />
                 <input
                   type="email"
+                  id="reg-email"
                   name="email"
                   placeholder="you@example.com"
                   value={formData.email}
@@ -195,11 +198,12 @@ export const Register = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-txt-secondary mb-2">Password</label>
+              <label htmlFor="reg-password" className="block text-sm font-semibold text-txt-secondary mb-2">Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" aria-hidden="true" />
                 <input
                   type="password"
+                  id="reg-password"
                   name="password"
                   placeholder="--------"
                   value={formData.password}
@@ -211,11 +215,12 @@ export const Register = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-txt-secondary mb-2">Confirm Password</label>
+              <label htmlFor="reg-confirmpassword" className="block text-sm font-semibold text-txt-secondary mb-2">Confirm Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" aria-hidden="true" />
                 <input
                   type="password"
+                  id="reg-confirmpassword"
                   name="confirmPassword"
                   placeholder="--------"
                   value={formData.confirmPassword}
@@ -259,8 +264,9 @@ export const Register = () => {
             {formData.role === 'instructor' && (
               <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                 <div>
-                  <label className="block text-sm font-semibold text-txt-secondary mb-2">Why do you want to be an instructor?</label>
+                  <label htmlFor="reg-reason" className="block text-sm font-semibold text-txt-secondary mb-2">Why do you want to be an instructor?</label>
                   <textarea
+                    id="reg-reason"
                     name="reason"
                     value={formData.reason}
                     onChange={handleChange}
@@ -270,8 +276,9 @@ export const Register = () => {
                   {errors.reason && <p className="text-red-400 text-sm mt-1">{errors.reason}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-txt-secondary mb-2">Teaching Experience (Optional)</label>
+                  <label htmlFor="reg-experience" className="block text-sm font-semibold text-txt-secondary mb-2">Teaching Experience (Optional)</label>
                   <textarea
+                    id="reg-experience"
                     name="experience"
                     value={formData.experience}
                     onChange={handleChange}
@@ -281,9 +288,10 @@ export const Register = () => {
                 </div>
                 <div className="space-y-4 pt-2">
                   <div className="space-y-1.5">
-                    <label className="block text-sm font-semibold text-txt-secondary">Carte d'Identité (ID Card)</label>
+                    <label htmlFor="reg-idcard" className="block text-sm font-semibold text-txt-secondary">Carte d'Identité (ID Card)</label>
                     <input
                       type="file"
+                      id="reg-idcard"
                       name="idCard"
                       onChange={handleFileChange}
                       required
@@ -293,9 +301,10 @@ export const Register = () => {
                     {errors.idCard && <p className="text-red-400 text-sm mt-1">{errors.idCard}</p>}
                   </div>
                   <div className="space-y-1.5">
-                    <label className="block text-sm font-semibold text-txt-secondary">Curriculum Vitae (CV)</label>
+                    <label htmlFor="reg-cv" className="block text-sm font-semibold text-txt-secondary">Curriculum Vitae (CV)</label>
                     <input
                       type="file"
+                      id="reg-cv"
                       name="cv"
                       onChange={handleFileChange}
                       required
@@ -305,9 +314,10 @@ export const Register = () => {
                     {errors.cv && <p className="text-red-400 text-sm mt-1">{errors.cv}</p>}
                   </div>
                   <div className="space-y-1.5">
-                    <label className="block text-sm font-semibold text-txt-secondary">Diplôme (Diploma)</label>
+                    <label htmlFor="reg-diploma" className="block text-sm font-semibold text-txt-secondary">Diplôme (Diploma)</label>
                     <input
                       type="file"
+                      id="reg-diploma"
                       name="diploma"
                       onChange={handleFileChange}
                       required
@@ -348,9 +358,10 @@ export const Register = () => {
             <button 
               type="button"
               onClick={() => googleLoginHandler()}
+              aria-label="Sign up with Google"
               className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-surface-card border border-bdr rounded-xl font-bold text-txt hover:bg-surface-hover transition-all shadow-sm group"
             >
-              <svg className="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>

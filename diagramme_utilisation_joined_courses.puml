@@ -1,4 +1,4 @@
-@startuml Diagramme_Student_Joined_Courses
+@startuml Diagramme_Student_Courses
 
 left to right direction
 
@@ -45,64 +45,51 @@ skinparam note {
 actor "Student" as S
 
 ' ================= SYSTEM BOUNDARY =================
-rectangle "Manage Joined Courses" {
+rectangle "Courses Management (Student)" {
 
-    usecase "Manage Joined Courses" as ManageJoined
+    usecase "Manage Courses" as ManageCourses
 
-    ' --- Primary Generalizations ---
+    ' --- The Two Main Options ---
+    usecase "Discover Courses" as Discover
+    usecase "Manage Joined Courses" as JoinedCourses
+
+    Discover --|> ManageCourses
+    JoinedCourses --|> ManageCourses
+
+    ' --- Discover Courses Actions ---
+    usecase "Search & Filter Courses" as SearchCourses
     usecase "Join Course" as JoinCourse
-    usecase "Unenroll from Course" as UnenrollCourse
-    usecase "Access Course" as AccessCourse
-
-    JoinCourse --|> ManageJoined
-    UnenrollCourse --|> ManageJoined
-    AccessCourse --|> ManageJoined
-
-    ' --- Join Course Extensions ---
-    usecase "Enroll for Free" as EnrollFree
-    usecase "Enroll in Paid Course" as EnrollPaid
-    usecase "Join via Code" as JoinCode
-
-    EnrollFree ..> JoinCourse : <<extend>>
-    EnrollPaid ..> JoinCourse : <<extend>>
-    JoinCode ..> JoinCourse : <<extend>>
-
-    ' --- Access Course Generalizations ---
-    usecase "View Course Info" as ViewInfo
-    usecase "Access Sessions" as AccessSessions
-    usecase "Take Final Exam" as FinalExam
-    usecase "Track Progress" as TrackProgress
-    usecase "Access Course Chat" as CourseChat
-
-    ViewInfo --|> AccessCourse
-    AccessSessions --|> AccessCourse
-    FinalExam --|> AccessCourse
-    TrackProgress --|> AccessCourse
-    CourseChat --|> AccessCourse
-
-    ' --- Session Extensions ---
-    usecase "View Session Content" as ViewSession
-    usecase "Mark as Completed" as CompleteSession
-    usecase "Take Session Quiz" as Quiz
-
-    ViewSession ..> AccessSessions : <<extend>>
-    CompleteSession ..> AccessSessions : <<extend>>
-    Quiz ..> AccessSessions : <<extend>>
-
-    ' --- Progress Extensions ---
-    usecase "Download Certificate" as Certificate
-    Certificate ..> TrackProgress : <<extend>>
-
-    ' --- Course Info Extensions ---
-    usecase "Review Course" as Review
-    usecase "Report Course" as ReportCourse
     
-    Review ..> ViewInfo : <<extend>>
-    ReportCourse ..> ViewInfo : <<extend>>
+    SearchCourses ..> Discover : <<extend>>
+    JoinCourse ..> Discover : <<extend>>
+    JoinedCourses ..> JoinCourse : <<include>>
+
+    ' --- Join Course Options (Generalizations) ---
+    usecase "Enroll in Free Course" as EnrollFree
+    usecase "Enroll in Paid Course" as EnrollPaid
+    usecase "Join Classroom with Code" as JoinCode
+
+    EnrollFree --|> JoinCourse
+    EnrollPaid --|> JoinCourse
+    JoinCode --|> JoinCourse
+
+    ' --- After Joining (Options in Joined Courses) ---
+    usecase "Access Session Content" as AccessSessions
+    usecase "Access Course Chat" as AccessChat
+    usecase "Track Progress" as TrackProgress
+    usecase "Unenroll from Course" as Unenroll
+
+    AccessSessions --|> JoinedCourses
+    AccessChat --|> JoinedCourses
+    TrackProgress --|> JoinedCourses
+    Unenroll --|> JoinedCourses
+
+    usecase "Review Course" as ReviewCourse
+    ReviewCourse --|> JoinedCourses
 
 }
 
-S -- ManageJoined
+S -- ManageCourses
 
 note "All use cases require Login / Authentication" as AuthNote
 

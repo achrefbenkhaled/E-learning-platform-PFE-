@@ -266,3 +266,84 @@ export const logout = (req, res) => {
   // JWT is stateless, just clear on client side
   res.json({ message: 'Logout successful' });
 };
+
+export const requestPasswordReset = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ error: 'No account found with this email address' });
+    }
+
+    // Generate a secure random token using Node.js crypto
+    const { randomBytes } = await import('crypto');
+    const token = randomBytes(32).toString('hex');
+
+    // Save token and expiry (60 minutes) to user record
+    user.resetPasswordToken = token;
+    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
+
+    // Use updateOne to avoid triggering the password hash pre-save hook
+    await User.updateOne(
+      { _id: user._id },
+      {
+        resetPasswordToken: token,
+        resetPasswordExpires: user.resetPasswordExpires,
+      }
+    );
+
+    res.json({
+      message: 'Reset token generated successfully.',
+      resetToken: token,
+      userEmail: user.email,
+      userName: `${user.firstName} ${user.lastName}`,
+    });
+  } catch (error) {
+    console.error('Request password reset error:', error);
+    res.status(500).json({ error: 'Failed to process password reset request' });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Token and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    if (newPassword.length > 128) {
+      return res.status(400).json({ error: 'Password must be 128 characters or less' });
+    }
+
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired reset token. Please request a new reset link.' });
+    }
+
+    // Set new password (the pre-save hook will hash it)
+    user.passwordHash = newPassword;
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+
+    await user.save();
+
+    res.json({ message: 'Password has been reset successfully. You can now log in.' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
+  }
+};

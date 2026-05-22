@@ -79,25 +79,30 @@ export const Login = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-txt-secondary mb-2">Email</label>
+              <label htmlFor="login-email" className="block text-sm font-semibold text-txt-secondary mb-2">Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" />
-                <input type="email" name="email" value={formData.email} onChange={handleChange}
-                  placeholder="you@example.com"
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" aria-hidden="true" />
+                <input type="email" id="login-email" name="email" value={formData.email} onChange={handleChange}
+                  placeholder="you@example.com" autoComplete="email"
                   className={`input-field pl-12 ${errors.email ? 'border-red-500' : ''}`} />
               </div>
               {errors.email && <p className="text-red-400 text-sm mt-1">{errors.email}</p>}
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-txt-secondary mb-2">Password</label>
+              <label htmlFor="login-password" className="block text-sm font-semibold text-txt-secondary mb-2">Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" />
-                <input type="password" name="password" value={formData.password} onChange={handleChange}
-                  placeholder="--------"
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" aria-hidden="true" />
+                <input type="password" id="login-password" name="password" value={formData.password} onChange={handleChange}
+                  placeholder="--------" autoComplete="current-password"
                   className={`input-field pl-12 ${errors.password ? 'border-red-500' : ''}`} />
               </div>
               {errors.password && <p className="text-red-400 text-sm mt-1">{errors.password}</p>}
+              <div className="flex justify-end mt-1">
+                <Link to="/forgot-password" className="text-sm text-indigo-600 hover:text-indigo-500 font-semibold">
+                  Forgot Password?
+                </Link>
+              </div>
             </div>
 
             <button type="submit" disabled={isLoading} className="btn-primary w-full py-3">
@@ -121,9 +126,10 @@ export const Login = () => {
           <button 
             type="button"
             onClick={() => googleLoginHandler()}
+            aria-label="Sign in with Google"
             className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-surface-card border border-bdr rounded-xl font-bold text-txt hover:bg-surface-hover transition-all shadow-sm group"
           >
-            <svg className="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
               <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>

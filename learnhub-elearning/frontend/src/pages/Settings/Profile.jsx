@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, FileText, Link as LinkIcon, Bell, Globe, Save, Camera, Sun, Moon, LayoutGrid } from 'lucide-react';
+import { User, Mail, FileText, Link as LinkIcon, Globe, Save, Camera, Sun, Moon, LayoutGrid, KeyRound, Send } from 'lucide-react';
 import api from '../../utils/api.js';
+import emailjs from '@emailjs/browser';
 import { validateName, validateUrl } from '../../utils/validators.js';
 import useAuth from '../../hooks/useAuth.js';
 import useAuthStore from '../../context/authStore.js';
@@ -18,6 +19,15 @@ const Profile = () => {
   const [avatarUrl, setAvatarUrl] = useState('');
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [publicProfile, setPublicProfile] = useState(true);
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [resetEmailSending, setResetEmailSending] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -82,6 +92,74 @@ const Profile = () => {
     }
   };
 
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError('All password fields are required');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      await api.put(`/api/users/${user._id}/password`, {
+        currentPassword,
+        newPassword,
+      });
+      setPasswordSuccess('Password changed successfully!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      setPasswordError(err.response?.data?.error || 'Failed to change password');
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  const handleResetViaEmail = async () => {
+    setPasswordError('');
+    setPasswordSuccess('');
+    setResetEmailSending(true);
+    try {
+      const { data } = await api.post('/api/auth/forgot-password', { email: user.email });
+      if (data.resetToken) {
+        const frontendUrl = window.location.origin;
+        const resetLink = `${frontendUrl}/reset-password?token=${data.resetToken}`;
+        await emailjs.send(
+          import.meta.env.VITE_EMAILJS_SERVICE_ID,
+          import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+          {
+            to_email: data.userEmail,
+            to_name: data.userName,
+            resetLink: resetLink,
+            reset_link: resetLink,
+          },
+          import.meta.env.VITE_EMAILJS_PUBLIC_KEY
+        );
+      }
+      setResetEmailSent(true);
+      setPasswordSuccess('Password reset link sent to your email!');
+    } catch (err) {
+      console.error('Reset email error:', err);
+      const msg = err?.text || err?.message || err?.response?.data?.error || 'Failed to send reset email';
+      setPasswordError(msg);
+    } finally {
+      setResetEmailSending(false);
+    }
+  };
 
   const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || '?';
 
@@ -236,29 +314,6 @@ const Profile = () => {
             <div className="space-y-4">
               <label className="flex items-center justify-between cursor-pointer p-3 rounded-xl border-2 border-bdr hover:border-bdr-hover transition-all">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-yellow-400/10 border border-yellow-400/20 flex items-center justify-center">
-                    <Bell className="w-4 h-4 text-yellow-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-txt">Email Notifications</p>
-                    <p className="text-xs text-txt-muted">Receive email updates about your courses</p>
-                  </div>
-                </div>
-                <div
-                  onClick={() => setEmailNotifications(!emailNotifications)}
-                  className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
-                    emailNotifications ? 'bg-yellow-400' : 'bg-gray-700'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full shadow transition-transform ${
-                      emailNotifications ? 'translate-x-5 bg-black' : 'bg-gray-400'
-                    }`}
-                  />
-                </div>
-              </label>
-              <label className="flex items-center justify-between cursor-pointer p-3 rounded-xl border-2 border-bdr hover:border-bdr-hover transition-all">
-                <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-blue-400/10 border border-blue-400/20 flex items-center justify-center">
                     <Globe className="w-4 h-4 text-blue-400" />
                   </div>
@@ -323,6 +378,95 @@ const Profile = () => {
                 </>
               )}
             </button>
+          </div>
+        </form>
+
+        {/* Change Password Section */}
+        <form onSubmit={handlePasswordChange} className="mt-8 space-y-6">
+          <div className="bg-surface-card border-2 border-bdr rounded-2xl p-6">
+            <h2 className="text-lg font-bold text-txt mb-4 flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-yellow-400" /> Security & Password
+            </h2>
+            
+            {passwordError && (
+              <div className="mb-4 p-3 bg-red-400/10 border border-red-400/20 rounded-xl text-red-400 text-sm">
+                {passwordError}
+              </div>
+            )}
+            {passwordSuccess && (
+              <div className="mb-4 p-3 bg-green-400/10 border border-green-400/20 rounded-xl text-green-400 text-sm">
+                {passwordSuccess}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-txt-secondary mb-2">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="input-field"
+                />
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-txt-secondary mb-2">
+                    New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-txt-secondary mb-2">
+                    Confirm New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="input-field"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-between mt-6">
+              <button
+                type="button"
+                onClick={handleResetViaEmail}
+                disabled={resetEmailSending || resetEmailSent}
+                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-indigo-400 border-2 border-indigo-400/20 rounded-xl hover:bg-indigo-400/10 transition-all disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" />
+                {resetEmailSending ? 'Sending...' : resetEmailSent ? 'Email Sent ✓' : 'Reset via Email'}
+              </button>
+              <button
+                type="submit"
+                disabled={passwordSaving}
+                className="btn-primary inline-flex items-center gap-2"
+              >
+                {passwordSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="w-4 h-4" /> Change Password
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>

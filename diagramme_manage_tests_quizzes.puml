@@ -1,0 +1,64 @@
+@startuml Manage_Tests_Quizzes
+left to right direction
+
+skinparam actorStyle stickman
+skinparam shadowing false
+
+actor Instructor as I
+
+rectangle "Test & Quiz Management System" {
+
+    ' Main Entry Point
+    usecase "Manage Tests & Quizzes" as ManageTests
+
+    ' Generalizations (separated at creation/update/deletion)
+    usecase "Create Practice Quiz" as CreateQuiz
+    usecase "Create Final Exam" as CreateExam
+    usecase "Update Test / Quiz" as UpdateTest
+    usecase "Delete Test / Quiz" as DeleteTest
+    usecase "Review Student Performance" as ReviewPerformance
+
+    ' Creation Details
+    usecase "Generate Questions via AI" as AIGenerate
+    usecase "Add Questions Manually" as ManualAdd
+    usecase "Configure Test Settings" as ConfigureSettings
+    usecase "Schedule Exam Windows" as ScheduleWindows
+    usecase "Enable Anti-Cheat Protection" as EnableAntiCheat
+    
+    ' Review Details
+    usecase "View Attempts & Scores" as ViewAttempts
+    usecase "Review Proctoring Logs" as ReviewProctoring
+}
+
+' Instructor base relation
+I -- ManageTests
+
+' Main operations generalizing the hub
+CreateQuiz --|> ManageTests
+CreateExam --|> ManageTests
+UpdateTest --|> ManageTests
+DeleteTest --|> ManageTests
+ReviewPerformance --|> ManageTests
+
+' Creation and editing details
+AIGenerate ..> CreateQuiz : <<extend>>
+AIGenerate ..> CreateExam : <<extend>>
+
+ManualAdd ..> CreateQuiz : <<extend>>
+ManualAdd ..> CreateExam : <<extend>>
+
+ConfigureSettings ..> CreateQuiz : <<extend>>
+ConfigureSettings ..> CreateExam : <<extend>>
+ConfigureSettings ..> UpdateTest : <<extend>>
+
+ScheduleWindows ..> CreateExam : <<extend>>
+ScheduleWindows ..> UpdateTest : <<extend>> 
+
+EnableAntiCheat ..> CreateExam : <<extend>>
+EnableAntiCheat ..> UpdateTest : <<extend>>
+
+' Review and performance details
+ViewAttempts ..> ReviewPerformance : <<extend>>
+ReviewProctoring ..> ViewAttempts : <<extend>>
+
+@enduml

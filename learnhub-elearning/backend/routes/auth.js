@@ -6,6 +6,8 @@ import {
   logout,
   refreshToken,
   getCurrentUser,
+  requestPasswordReset,
+  resetPassword,
 } from '../controllers/authController.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validateRegister, validateLogin } from '../middleware/validate.js';
@@ -19,5 +21,7 @@ router.post('/google-login', uploadDocuments, googleLogin);
 router.post('/logout', logout);
 router.post('/refresh', refreshToken);
 router.get('/me', authMiddleware, getCurrentUser);
+router.post('/forgot-password', requestPasswordReset);
+router.post('/reset-password', resetPassword);
 
 export default router;

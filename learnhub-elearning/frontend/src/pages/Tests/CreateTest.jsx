@@ -1,9 +1,16 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation, useParams } from 'react-router-dom';
 import { Plus, Trash2, HelpCircle, Star, Clock, Target, ArrowLeft, Shuffle, Eye, Calendar, Camera, Shield } from 'lucide-react';
 import useAuth from '../../hooks/useAuth.js';
 import api from '../../utils/api.js';
 import { validateTitle } from '../../utils/validators.js';
+
+// Format date to YYYY-MM-DDTHH:mm for input
+const formatDateTimeLocal = (date) => {
+  if (!date || isNaN(date.getTime())) return '';
+  const pad = (n) => n.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 
 const emptyQuestion = () => ({
   id: Date.now(),
@@ -21,6 +28,8 @@ const CreateTest = () => {
   const { user, isLoading } = useAuth();
   const [searchParams] = useSearchParams();
   const courseId = searchParams.get('courseId');
+  const { testId } = useParams();
+  const isEditMode = !!testId;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [instructorCourses, setInstructorCourses] = useState([]);
@@ -72,11 +81,80 @@ const CreateTest = () => {
     }
   };
 
-  // Format date to YYYY-MM-DDTHH:mm for input
-  const formatDateTimeLocal = (date) => {
-    const pad = (n) => n.toString().padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const handleAntiCheatToggle = () => {
+    const newValue = !requireAntiCheat;
+    setRequireAntiCheat(newValue);
+    if (newValue) {
+      setTestType('final');
+    } else {
+      setTestType('quiz');
+    }
   };
+
+  // Fetch test details for editing
+  useEffect(() => {
+    if (isEditMode) {
+      const fetchTest = async () => {
+        try {
+          setLoading(true);
+          const { data } = await api.get(`/api/tests/${testId}`);
+          
+          setTitle(data.title || '');
+          setDescription(data.description || '');
+          setSelectedCourseId(data.courseId || '');
+          setTestType(data.type || 'quiz');
+          
+          if (data.settings) {
+            setDuration(data.settings.duration || 30);
+            setPassingScore(data.settings.passingScore || 50);
+            setShuffleQuestions(!!data.settings.shuffleQuestions);
+            setShowResults(data.settings.showResults !== false);
+            setRequireAntiCheat(!!data.settings.requireAntiCheat);
+            
+            if (data.settings.scheduledStartTime) {
+              setScheduledStartTime(formatDateTimeLocal(new Date(data.settings.scheduledStartTime)));
+            }
+            if (data.settings.scheduledEndTime) {
+              setScheduledEndTime(formatDateTimeLocal(new Date(data.settings.scheduledEndTime)));
+            }
+          }
+          
+          if (data.questions && data.questions.length > 0) {
+            const formatted = data.questions.map((q, idx) => {
+              const type = q.type || 'multiple-choice';
+              let correctAnswer = 0;
+              let correctAnswerText = '';
+              
+              if (type === 'multiple-choice' && q.options) {
+                correctAnswer = q.options.indexOf(q.correctAnswer);
+                if (correctAnswer === -1) correctAnswer = 0;
+              } else {
+                correctAnswerText = q.correctAnswer || '';
+              }
+              
+              return {
+                id: q._id || Date.now() + idx,
+                type,
+                text: q.question || '',
+                points: q.points || 1,
+                options: q.options || ['', '', '', ''],
+                correctAnswer,
+                correctAnswerText,
+                attachments: q.attachments || [],
+              };
+            });
+            setQuestions(formatted);
+          }
+        } catch (err) {
+          setError(err.response?.data?.message || err.response?.data?.error || 'Failed to load test details.');
+        } finally {
+          setLoading(false);
+        }
+      };
+      
+      fetchTest();
+    }
+  }, [testId, isEditMode]);
 
   const handleDurationChange = (e) => {
     const newDuration = e.target.value;
@@ -259,10 +337,14 @@ const CreateTest = () => {
 
     try {
       setLoading(true);
-      await api.post('/api/tests', payload);
+      if (isEditMode) {
+        await api.put(`/api/tests/${testId}`, payload);
+      } else {
+        await api.post('/api/tests', payload);
+      }
       navigate(selectedCourseId ? `/courses/${selectedCourseId}/edit` : '/tests');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create test.');
+      setError(err.response?.data?.message || err.response?.data?.error || `Failed to ${isEditMode ? 'save' : 'create'} test.`);
     } finally {
       setLoading(false);
     }
@@ -306,9 +388,9 @@ const CreateTest = () => {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-black text-txt">Create Test</h1>
+            <h1 className="text-3xl font-black text-txt">{isEditMode ? 'Edit Test' : 'Create Test'}</h1>
             <p className="mt-1 text-txt-muted">
-              {courseId ? 'Creating test for a course' : 'Design a new test with questions'}
+              {isEditMode ? 'Modify test details, settings, and questions' : (courseId ? 'Creating test for a course' : 'Design a new test with questions')}
             </p>
           </div>
           <button
@@ -521,7 +603,7 @@ const CreateTest = () => {
               </label>
               <label className="flex items-center gap-3 cursor-pointer">
                 <div
-                  onClick={() => setRequireAntiCheat(!requireAntiCheat)}
+                  onClick={handleAntiCheatToggle}
                   className={`relative w-11 h-6 rounded-full transition-colors ${
                     requireAntiCheat ? 'bg-yellow-400' : 'bg-gray-700'
                   }`}
@@ -760,10 +842,10 @@ const CreateTest = () => {
             >
               {loading ? (
                 <span className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Creating...
+                  <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> {isEditMode ? 'Saving...' : 'Creating...'}
                 </span>
               ) : (
-                'Create Test'
+                isEditMode ? 'Save Changes' : 'Create Test'
               )}
             </button>
           </div>

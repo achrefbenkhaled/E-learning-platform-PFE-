@@ -12,6 +12,7 @@ const UserProfile = () => {
   const { user: currentUser } = useAuth();
   const [profile, setProfile] = useState(null);
   const [courses, setCourses] = useState([]);
+  const [completedCourses, setCompletedCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showReportModal, setShowReportModal] = useState(false);
@@ -24,6 +25,7 @@ const UserProfile = () => {
         const { data } = await api.get(`/api/users/${userId}/profile`);
         setProfile(data.user || data);
         setCourses(data.courses || []);
+        setCompletedCourses(data.completedCourses || []);
       } catch (err) {
         setError(err.response?.data?.error || 'Failed to load profile');
       } finally {
@@ -156,7 +158,7 @@ const UserProfile = () => {
             {!profile.isPrivate && (
               <>
                 {/* Stats */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-bdr">
+                <div className={`grid gap-3 mt-6 pt-5 border-t border-bdr ${profile.roles?.includes('instructor') ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'}`}>
                   <div className="text-center p-3 bg-surface rounded-xl">
                     <div className="flex items-center justify-center gap-1.5 text-yellow-400 mb-1">
                       <Calendar className="w-4 h-4" />
@@ -164,20 +166,24 @@ const UserProfile = () => {
                     <p className="text-xs text-txt-muted">Joined</p>
                     <p className="text-sm font-bold text-txt">{formatDate(profile.createdAt)}</p>
                   </div>
-                  <div className="text-center p-3 bg-surface rounded-xl">
-                    <div className="flex items-center justify-center gap-1.5 text-blue-400 mb-1">
-                      <BookOpen className="w-4 h-4" />
-                    </div>
-                    <p className="text-xs text-txt-muted">Courses</p>
-                    <p className="text-sm font-bold text-txt">{profile.courseCount || courses.length || 0}</p>
-                  </div>
-                  <div className="text-center p-3 bg-surface rounded-xl">
-                    <div className="flex items-center justify-center gap-1.5 text-green-400 mb-1">
-                      <Users className="w-4 h-4" />
-                    </div>
-                    <p className="text-xs text-txt-muted">Students</p>
-                    <p className="text-sm font-bold text-txt">{profile.studentCount || 0}</p>
-                  </div>
+                  {profile.roles?.includes('instructor') && (
+                    <>
+                      <div className="text-center p-3 bg-surface rounded-xl">
+                        <div className="flex items-center justify-center gap-1.5 text-blue-400 mb-1">
+                          <BookOpen className="w-4 h-4" />
+                        </div>
+                        <p className="text-xs text-txt-muted">Courses</p>
+                        <p className="text-sm font-bold text-txt">{profile.courseCount || courses.length || 0}</p>
+                      </div>
+                      <div className="text-center p-3 bg-surface rounded-xl">
+                        <div className="flex items-center justify-center gap-1.5 text-green-400 mb-1">
+                          <Users className="w-4 h-4" />
+                        </div>
+                        <p className="text-xs text-txt-muted">Students</p>
+                        <p className="text-sm font-bold text-txt">{profile.studentCount || 0}</p>
+                      </div>
+                    </>
+                  )}
                   <div className="text-center p-3 bg-surface rounded-xl">
                     <div className="flex items-center justify-center gap-1.5 text-purple-400 mb-1">
                       <Award className="w-4 h-4" />
@@ -235,12 +241,46 @@ const UserProfile = () => {
               )}
 
               {/* Empty state for courses */}
-              {courses.length === 0 && (
-                <div className="bg-surface-card border-2 border-bdr rounded-2xl p-6 text-center">
+              {courses.length === 0 && profile.roles?.includes('instructor') && (
+                <div className="bg-surface-card border-2 border-bdr rounded-2xl p-6 text-center mb-8">
                   <BookOpen className="w-8 h-8 text-txt-muted mx-auto mb-2" />
                   <p className="text-txt-muted text-sm">
                     {profile.firstName} hasn't published any courses yet.
                   </p>
+                </div>
+              )}
+
+              {/* Completed Courses (Learning History) */}
+              {completedCourses.length > 0 && (
+                <div className="mt-8 pt-8 border-t border-bdr">
+                  <h2 className="text-lg font-bold text-txt mb-4 flex items-center gap-2">
+                    <Award className="w-5 h-5 text-yellow-400" />
+                    Learning History
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {completedCourses.map((course) => (
+                      <Link
+                        key={course._id}
+                        to={`/courses/${course._id}`}
+                        className="bg-surface-card border-2 border-bdr rounded-2xl p-5 hover:border-yellow-400/30 transition-all group"
+                      >
+                        <h3 className="text-base font-bold text-txt group-hover:text-yellow-400 transition-colors mb-1 line-clamp-1">
+                          {course.title}
+                        </h3>
+                        <p className="text-txt-muted text-sm mb-3 line-clamp-2">
+                          {course.description || 'No description'}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="badge badge-accent text-xs">Completed</span>
+                          {course.completedAt && (
+                            <span className="text-xs text-txt-muted font-medium">
+                              {formatDate(course.completedAt)}
+                            </span>
+                          )}
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
                 </div>
               )}
             </>

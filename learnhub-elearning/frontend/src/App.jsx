@@ -5,57 +5,46 @@ import { SocketProvider } from './context/SocketContext.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import Layout from './components/common/Layout.jsx';
 import useAuthStore from './context/authStore.js';
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 
-// Auth pages
-import { Login } from './pages/Login.jsx';
-import { Register } from './pages/Register.jsx';
-import NotFound from './pages/NotFound.jsx';
+// Lazy-loaded pages for code splitting (reduces initial bundle size)
+const Login = lazy(() => import('./pages/Login.jsx').then(m => ({ default: m.Login })));
+const Register = lazy(() => import('./pages/Register.jsx').then(m => ({ default: m.Register })));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword.jsx'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
+const NotFound = lazy(() => import('./pages/NotFound.jsx'));
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const CourseBrowser = lazy(() => import('./pages/Courses/CourseBrowser.jsx'));
+const CourseDetail = lazy(() => import('./pages/Courses/CourseDetail.jsx'));
+const CreateCourse = lazy(() => import('./pages/Courses/CreateCourse.jsx'));
+const SessionPlayer = lazy(() => import('./pages/Courses/SessionPlayer.jsx'));
+const MyCourses = lazy(() => import('./pages/Courses/MyCourses.jsx'));
+const EditCourse = lazy(() => import('./pages/Courses/EditCourse.jsx'));
+const Feed = lazy(() => import('./pages/Community/Feed.jsx'));
+const PostDetail = lazy(() => import('./pages/Community/PostDetail.jsx'));
+const ChatRoom = lazy(() => import('./pages/Chat/ChatRoom.jsx'));
+const TestBrowser = lazy(() => import('./pages/Tests/TestBrowser.jsx'));
+const CreateTest = lazy(() => import('./pages/Tests/CreateTest.jsx'));
+const TakeTest = lazy(() => import('./pages/Tests/TakeTest.jsx'));
+const TestResults = lazy(() => import('./pages/Tests/TestResults.jsx'));
+const TestParticipants = lazy(() => import('./pages/Tests/TestParticipants.jsx'));
+const AdminDashboard = lazy(() => import('./pages/Admin/AdminDashboard.jsx'));
+const UserManagement = lazy(() => import('./pages/Admin/UserManagement.jsx'));
+const ContentModeration = lazy(() => import('./pages/Admin/ContentModeration.jsx'));
+const CourseManagement = lazy(() => import('./pages/Admin/CourseManagement.jsx'));
+const TestManagement = lazy(() => import('./pages/Admin/TestManagement.jsx'));
+const InstructorRequests = lazy(() => import('./pages/Admin/InstructorRequests.jsx'));
+const Profile = lazy(() => import('./pages/Settings/Profile.jsx'));
+const Checkout = lazy(() => import('./pages/Checkout.jsx'));
+const LandingPage = lazy(() => import('./pages/LandingPage.jsx'));
+const UserProfile = lazy(() => import('./pages/UserProfile.jsx'));
 
-// Main pages
-import Dashboard from './pages/Dashboard.jsx';
-
-// Course pages
-import CourseBrowser from './pages/Courses/CourseBrowser.jsx';
-import CourseDetail from './pages/Courses/CourseDetail.jsx';
-import CreateCourse from './pages/Courses/CreateCourse.jsx';
-import SessionPlayer from './pages/Courses/SessionPlayer.jsx';
-import MyCourses from './pages/Courses/MyCourses.jsx';
-import EditCourse from './pages/Courses/EditCourse.jsx';
-
-// Community pages
-import Feed from './pages/Community/Feed.jsx';
-import PostDetail from './pages/Community/PostDetail.jsx';
-
-// Chat
-import ChatRoom from './pages/Chat/ChatRoom.jsx';
-
-// Test pages
-import TestBrowser from './pages/Tests/TestBrowser.jsx';
-import CreateTest from './pages/Tests/CreateTest.jsx';
-import TakeTest from './pages/Tests/TakeTest.jsx';
-import TestResults from './pages/Tests/TestResults.jsx';
-import TestParticipants from './pages/Tests/TestParticipants.jsx';
-
-// Admin pages
-import AdminDashboard from './pages/Admin/AdminDashboard.jsx';
-import UserManagement from './pages/Admin/UserManagement.jsx';
-import ContentModeration from './pages/Admin/ContentModeration.jsx';
-import CourseManagement from './pages/Admin/CourseManagement.jsx';
-import TestManagement from './pages/Admin/TestManagement.jsx';
-import InstructorRequests from './pages/Admin/InstructorRequests.jsx';
-
-// Settings
-import Profile from './pages/Settings/Profile.jsx';
-
-// Checkout
-import Checkout from './pages/Checkout.jsx';
-
-// Landing
-import LandingPage from './pages/LandingPage.jsx';
-
-// User Profile
-import UserProfile from './pages/UserProfile.jsx';
+// Page loading fallback
+const PageLoader = () => (
+  <div className="h-screen bg-surface flex items-center justify-center">
+    <LoadingSpinner size="lg" />
+  </div>
+);
 
 const ProtectedRoute = ({ children, requiredRole }) => {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -89,8 +78,8 @@ const ProtectedRoute = ({ children, requiredRole }) => {
 const AppLayout = ({ children, activePage }) => {
   const { user } = useAuth();
 
-  // Pages allowed for admin to view (as requested: Chat and Community)
-  const allowedForAdmin = ['community', 'chat'].includes(activePage);
+  // Pages allowed for admin to view (as requested: Chat, Community, and Settings)
+  const allowedForAdmin = ['community', 'chat', 'settings'].includes(activePage);
 
   if (user?.roles?.includes('admin') && !allowedForAdmin) {
     return <Navigate to="/admin" />;
@@ -124,10 +113,13 @@ function App() {
     <ThemeProvider>
       <SocketProvider>
         <Router>
+          <Suspense fallback={<PageLoader />}>
           <Routes>
           {/* Public auth pages */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Dashboard */}
           <Route path="/dashboard" element={<AppLayout activePage="dashboard"><Dashboard /></AppLayout>} />
@@ -139,7 +131,7 @@ function App() {
               <Layout activePage="courses"><CreateCourse /></Layout>
             </ProtectedRoute>
           } />
-          <Route path="/courses/my" element={<AppLayout activePage="my-courses"><MyCourses /></AppLayout>} />
+          <Route path="/courses/my" element={<AppLayout activePage="courses"><MyCourses /></AppLayout>} />
           <Route path="/courses/:id/edit" element={
             <ProtectedRoute requiredRole="instructor">
               <Layout activePage="courses"><EditCourse /></Layout>
@@ -165,6 +157,11 @@ function App() {
           {/* Tests */}
           <Route path="/tests" element={<AppLayout activePage="tests"><TestBrowser /></AppLayout>} />
           <Route path="/tests/create" element={
+            <ProtectedRoute requiredRole="instructor">
+              <Layout activePage="tests"><CreateTest /></Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/tests/:testId/edit" element={
             <ProtectedRoute requiredRole="instructor">
               <Layout activePage="tests"><CreateTest /></Layout>
             </ProtectedRoute>
@@ -217,6 +214,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+          </Suspense>
         </Router>
       </SocketProvider>
     </ThemeProvider>

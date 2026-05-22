@@ -79,7 +79,6 @@ const Navbar = ({ user, onLogout }) => {
   const mobileNavItems = [
     { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
     { label: 'Courses', to: '/courses', icon: BookOpen },
-    { label: 'My Courses', to: '/courses/my', icon: GraduationCap },
     { label: 'Community', to: '/community', icon: MessageSquare },
     { label: 'Chat', to: '/chat', icon: MessageCircle },
     { label: 'Tests', to: '/tests', icon: ClipboardList },
@@ -239,12 +238,10 @@ const Navbar = ({ user, onLogout }) => {
                     className="flex items-center gap-2 px-4 py-2.5 text-sm text-txt-secondary hover:text-indigo-600 hover:bg-indigo-500/5 transition-all">
                     <User className="w-4 h-4" /> View Profile
                   </Link>
-                  {!user?.roles?.includes('admin') && (
-                    <Link to="/settings" onClick={() => setProfileDropdownOpen(false)}
-                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-txt-secondary hover:text-indigo-600 hover:bg-indigo-500/5 transition-all">
-                      <Settings className="w-4 h-4" /> Settings
-                    </Link>
-                  )}
+                  <Link to="/settings" onClick={() => setProfileDropdownOpen(false)}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm text-txt-secondary hover:text-indigo-600 hover:bg-indigo-500/5 transition-all">
+                    <Settings className="w-4 h-4" /> Settings
+                  </Link>
                 </div>
                 <div className="border-t border-bdr py-1">
                   <button onClick={handleLogout}
@@ -280,7 +277,7 @@ const Navbar = ({ user, onLogout }) => {
           <div className="px-2 pb-3 space-y-1">
             {mobileNavItems.map((link) => {
               const isAdmin = user?.roles?.includes('admin');
-              const isAllowedForAdmin = ['Community', 'Chat'].includes(link.label);
+              const isAllowedForAdmin = ['Community', 'Chat', 'Settings'].includes(link.label);
               if (isAdmin && !isAllowedForAdmin) return null;
 
               return (

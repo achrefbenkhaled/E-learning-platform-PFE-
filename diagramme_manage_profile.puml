@@ -1,0 +1,119 @@
+@startuml Diagramme_Manage_Profile
+
+left to right direction
+
+' ================= CUSTOM SKINPARAM & STYLING =================
+skinparam BackgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+skinparam actor {
+    BackgroundColor #FFFFFF
+    BorderColor #333333
+    BorderThickness 1.5
+    FontColor #000000
+    FontSize 13
+}
+
+skinparam usecase {
+    BackgroundColor #F2F5F7
+    BorderColor #475569
+    BorderThickness 1.2
+    FontColor #000000
+    FontSize 12
+    ArrowColor #475569
+    ArrowThickness 1.2
+}
+
+skinparam packageStyle rectangle
+skinparam rectangle {
+    BorderColor #475569
+    BorderThickness 1.5
+    FontColor #000000
+    FontSize 14
+    FontStyle bold
+}
+
+skinparam note {
+    BackgroundColor #F8FAFC
+    BorderColor #475569
+    FontColor #000000
+    FontSize 12
+}
+
+' ================= ACTORS =================
+actor "User" as U
+actor "Student" as S
+actor "Instructor" as I
+actor "Admin" as A
+
+' Inheritance (Generalization)
+' Student, Instructor, and Admin inherit from User
+S --|> U
+I --|> U
+A --|> U
+
+' ================= SYSTEM BOUNDARY =================
+rectangle "Profile Management System" {
+
+    ' --- Core Profile Options (Shared by all Users) ---
+    usecase "Manage Profile" as ManageProfile
+    usecase "View Profile" as ViewProfile
+    usecase "Edit Profile Information" as EditProfile
+    usecase "Manage Security Settings" as ManageSecurity
+
+    ViewProfile --|> ManageProfile
+    EditProfile --|> ManageProfile
+    ManageSecurity --|> ManageProfile
+
+    ' --- Edit Profile Actions ---
+    usecase "Change Avatar" as ChangeAvatar
+    usecase "Update Personal Info" as UpdateInfo
+
+    ChangeAvatar ..> EditProfile : <<extend>>
+    UpdateInfo ..> EditProfile : <<extend>>
+
+    ' --- Security Actions ---
+    usecase "Change Password" as ChangePassword
+    ChangePassword ..> ManageSecurity : <<extend>>
+
+    ' --- Student Specific Features ---
+    usecase "View Enrollment History" as ViewHistory
+    usecase "Download Certificates" as DownloadCerts
+
+    DownloadCerts ..> ViewHistory : <<extend>>
+
+    ' --- Instructor Specific Features ---
+    usecase "Submit Verification Documents" as SubmitDocs
+    usecase "Edit Public Bio / Expertise" as EditBio
+
+    ' --- Admin Specific Features ---
+    usecase "Manage Other Users' Profiles" as ManageUsers
+    usecase "Block / Suspend Users" as BlockUsers
+    usecase "Change User Roles" as ChangeRoles
+
+    BlockUsers ..> ManageUsers : <<extend>>
+    ChangeRoles ..> ManageUsers : <<extend>>
+}
+
+' ================= ACTOR RELATIONSHIPS =================
+
+' Base User Interaction
+U -- ManageProfile
+
+' The specialized actors inherit the ability to "Manage Profile" 
+' but also have their own specific extra actions.
+
+' Student relations
+S -- ViewHistory
+
+' Instructor relations
+I -- SubmitDocs
+I -- EditBio
+
+' Admin relations
+A -- ManageUsers
+
+note "Student, Instructor, and Admin\ninherit base profile management\nprivileges from the 'User' actor." as NoteInherit
+
+@enduml

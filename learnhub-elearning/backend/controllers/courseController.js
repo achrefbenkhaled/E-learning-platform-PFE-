@@ -9,7 +9,8 @@ import { escapeRegex } from '../middleware/validate.js';
 export const getCourses = async (req, res) => {
   try {
     const { category, level, search, price, minPrice, page = 1, limit = 12 } = req.query;
-    let filter = { status: 'published', type: 'standard' };
+    // Show published courses that are NOT explicitly marked as 'classroom'
+    let filter = { status: 'published', type: { $ne: 'classroom' } };
 
     if (category) filter.categories = { $in: [category] };
     if (level) filter.level = level.toLowerCase();

@@ -4,7 +4,6 @@ import { LayoutDashboard, BookOpen, GraduationCap, Users, MessageCircle, Clipboa
 const navItems = [
   { label: 'Dashboard', to: '/dashboard', key: 'dashboard', icon: LayoutDashboard },
   { label: 'Courses', to: '/courses', key: 'courses', icon: BookOpen },
-  { label: 'My Courses', to: '/courses/my', key: 'my-courses', icon: GraduationCap },
   { label: 'Community', to: '/community', key: 'community', icon: Users },
   { label: 'Chat', to: '/chat', key: 'chat', icon: MessageCircle },
   { label: 'Tests', to: '/tests', key: 'tests', icon: ClipboardCheck },
@@ -20,6 +19,7 @@ const adminItems = [
   { label: 'Instructor Requests', to: '/admin/instructor-requests', key: 'admin-instructor-requests', icon: UserCheck },
   { label: 'Community', to: '/community', key: 'community', icon: Users },
   { label: 'Chat', to: '/chat', key: 'chat', icon: MessageCircle },
+  { label: 'Settings', to: '/settings', key: 'settings', icon: Settings },
 ];
 
 const Sidebar = ({ activePage, user }) => {

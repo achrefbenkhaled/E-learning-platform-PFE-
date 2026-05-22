@@ -38,6 +38,40 @@ export const updateProfile = async (req, res) => {
   }
 };
 
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user._id.toString() !== req.userId) return res.status(403).json({ error: 'Not authorized' });
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current password and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+
+    if (newPassword.length > 128) {
+      return res.status(400).json({ error: 'New password must be 128 characters or less' });
+    }
+
+    const isPasswordValid = await user.comparePassword(currentPassword);
+    if (!isPasswordValid) {
+      return res.status(400).json({ error: 'Invalid current password' });
+    }
+
+    user.passwordHash = newPassword;
+    await user.save();
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ error: 'Failed to change password' });
+  }
+};
+
 export const searchUsers = async (req, res) => {
   try {
     const { q, page = 1, limit = 20 } = req.query;
@@ -72,9 +106,10 @@ export const getPublicProfile = async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const isOwner = req.userId && req.userId === user._id.toString();
+    const isAdmin = req.userRoles && req.userRoles.includes('admin');
     const isPublic = user.settings?.publicProfile !== false;
 
-    if (!isPublic && !isOwner) {
+    if (!isPublic && !isOwner && !isAdmin) {
       return res.json({
         user: {
           firstName: user.firstName,
@@ -84,6 +119,7 @@ export const getPublicProfile = async (req, res) => {
           isPrivate: true,
         },
         courses: [],
+        completedCourses: [],
         isPrivate: true
       });
     }
@@ -111,6 +147,22 @@ export const getPublicProfile = async (req, res) => {
       studentCount = uniqueStudents.length;
     }
 
+    // Get their completed courses (Learning History) - Only visible to owner or admin
+    let completedCourses = [];
+    if (isOwner || isAdmin) {
+      const EnrollmentModel = (await import('../models/Enrollment.js')).default;
+      const completedEnrollments = await EnrollmentModel.find({ userId: user._id, status: 'completed' })
+        .populate('courseId', 'title description thumbnail level categories')
+        .sort({ certificateEarnedAt: -1, updatedAt: -1 });
+        
+      completedCourses = completedEnrollments
+        .filter(e => e.courseId)
+        .map(e => ({
+          ...e.courseId.toObject(),
+          completedAt: e.certificateEarnedAt || e.updatedAt
+        }));
+    }
+
     res.json({ 
       user: { 
         ...user.toObject(), 
@@ -118,7 +170,8 @@ export const getPublicProfile = async (req, res) => {
         postCount, 
         studentCount 
       }, 
-      courses 
+      courses,
+      completedCourses
     });
   } catch (error) {
     console.error('Get public profile error:', error);

@@ -157,8 +157,19 @@ const TestBrowser = () => {
           </button>
 
           <button
+            onClick={() => navigate(`/tests/${test._id}/edit`)}
+            className={`p-2 rounded-lg text-txt-muted border border-transparent transition-all ${
+              isFinal ? 'hover:text-pink-500 hover:bg-pink-500/10 hover:border-pink-500/20' : 'hover:text-yellow-400 hover:bg-yellow-400/10 hover:border-yellow-400/20'
+            }`}
+            title="Edit Test"
+          >
+            <FileEdit className="w-3.5 h-3.5" />
+          </button>
+
+          <button
             onClick={() => setDeleteConfirm(test._id)}
             className="p-2 rounded-lg text-txt-muted hover:text-red-400 hover:bg-red-400/10 border border-transparent hover:border-red-400/20 transition-all"
+            title="Delete Test"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
