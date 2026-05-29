@@ -209,6 +209,7 @@ function App() {
 
           {/* User Profile */}
           <Route path="/users/:userId" element={<AppLayout activePage="community"><UserProfile /></AppLayout>} />
+          <Route path="/profile/:userId" element={<AppLayout activePage="community"><UserProfile /></AppLayout>} />
 
           {/* Landing / Default */}
           <Route path="/" element={<LandingPage />} />

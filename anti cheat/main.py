@@ -2,6 +2,7 @@ import json
 import os
 import threading
 import time
+import base64
 
 import cv2
 import mediapipe as mp
@@ -50,6 +51,17 @@ model_points = np.array(
 )
 MAX_YAW_OFFSET = 110 * 1.35
 MAX_PITCH_OFFSET = 140 * 1.35
+
+# Face Comparison State
+reference_encoding = None
+face_verified = None
+face_comparison_error = None
+face_check_samples = []
+
+try:
+    import face_recognition
+except ImportError:
+    face_recognition = None
 
 app = Flask(__name__)
 
@@ -137,6 +149,8 @@ def write_summary(duration_sec):
                         "phone_detected_count": phone_detected_count,
                         "unauthorized_person_detected_count": unauthorized_person_detected_count,
                         "no_person_detected_count": no_person_detected_count,
+                        "face_verified": face_verified,
+                        "face_comparison_error": face_comparison_error,
                         "error": last_error,
                     },
                     f,
@@ -150,17 +164,33 @@ def monitor_loop():
     global away_count, phone_detected_count, unauthorized_person_detected_count, no_person_detected_count
     global total_frames, calibrated_pitch, calibrated_yaw, start_session_time
     global mp_face_mesh, mp_face_detection, yolo_model
+    global face_verified, face_comparison_error, face_check_samples
 
     print("[SYSTEM] Initializing Models...")
     try:
+        print("[SYSTEM] Loading MediaPipe Face Mesh...")
         mp_face_mesh = mp.solutions.face_mesh.FaceMesh(refine_landmarks=True)
+        print("[SYSTEM] Loading MediaPipe Face Detection...")
         mp_face_detection = mp.solutions.face_detection.FaceDetection()
-        yolo_model = YOLO("yolov8n.pt")
+        
+        print("[SYSTEM] Loading YOLOv8 model (yolov8n.pt)...")
+        try:
+            yolo_model = YOLO("yolov8n.pt")
+        except Exception as ye:
+            print(f"[WARNING] YOLO model load failed: {str(ye)}. Object detection (phones/books) will be disabled.")
+            yolo_model = None
+            
+        if face_recognition is None:
+            print("[WARNING] face_recognition library not found. Face comparison will be disabled.")
+        else:
+            print("[SYSTEM] face_recognition library loaded successfully.")
+
         initialized = True
-        print("[SYSTEM] Models loaded successfully.")
+        print("[SYSTEM] All available models loaded successfully.")
     except Exception as e:
         last_error = f"Model initialization failed: {str(e)}"
         print(f"[ERROR] {last_error}")
+        print("[CRITICAL] Ensure you have installed: opencv-python, mediapipe, numpy, flask, ultralytics")
         running = False
         return
 
@@ -171,10 +201,10 @@ def monitor_loop():
         running = False
         return
 
-    # Calibration
+    # Calibration (Reduced from 2s to 0.7s for much faster startup)
     calibration_frames = []
     calib_start = time.time()
-    while time.time() - calib_start < 2 and running:
+    while time.time() - calib_start < 0.7 and running:
         ret, frame = cap.read()
         if not ret: continue
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -232,7 +262,7 @@ def monitor_loop():
             cv2.putText(frame, "NO FACE DETECTED!", (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
 
         # 2. YOLO Object Detection (Heavy - Skip Frames)
-        if frame_idx % YOLO_SKIP == 0:
+        if yolo_model is not None and frame_idx % YOLO_SKIP == 0:
             phone_detected_this_cycle = False
             yolo_results = yolo_model(small_frame, stream=True, verbose=False)
             for result in yolo_results:
@@ -245,6 +275,39 @@ def monitor_loop():
         if phone_detected_this_cycle:
             phone_detected_count += 1
             cv2.putText(frame, "PHONE DETECTED!", (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+
+        # 3. Face Comparison — ONE-TIME GATE CHECK (Optimized for Lag)
+        if reference_encoding is not None and face_recognition and face_verified is None and frame_idx % 15 == 0:
+            try:
+                # Use 640x480 for the encoding (Perfect balance of accuracy for siblings vs performance)
+                proc_frame = cv2.resize(frame, (640, 480))
+                rgb_proc = cv2.cvtColor(proc_frame, cv2.COLOR_BGR2RGB)
+                
+                # num_jitters=1 (standard) is much faster than 2
+                current_encodings = face_recognition.face_encodings(rgb_proc, num_jitters=1)
+                
+                if current_encodings:
+                    dist = face_recognition.face_distance([reference_encoding], current_encodings[0])[0]
+                    face_check_samples.append(dist)
+                    print(f"[SYSTEM] Biometric Sample {len(face_check_samples)}/5 | Distance: {dist:.3f}")
+                    
+                    if len(face_check_samples) >= 5:
+                        avg_dist = sum(face_check_samples) / len(face_check_samples)
+                        face_verified = bool(avg_dist < 0.48) # Slightly tighter for higher res
+                        print(f"[SYSTEM] ===== IDENTITY DECISION =====")
+                        print(f"[SYSTEM] Avg Distance: {avg_dist:.3f} | Result: {'MATCH' if face_verified else 'MISMATCH'}")
+                        print(f"[SYSTEM] =============================")
+            except Exception as e:
+                print(f"[ERROR] Face comparison failed: {str(e)}")
+
+        if face_verified is True:
+             cv2.putText(frame, "IDENTITY: MATCH", (30, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        elif face_verified is False:
+             cv2.putText(frame, "IDENTITY: MISMATCH!", (30, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        else:
+             cv2.putText(frame, "IDENTITY: PENDING...", (30, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+             if face_comparison_error:
+                 cv2.putText(frame, f"ERR: {face_comparison_error}", (30, 190), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
         # Encoding for live view
         ok, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
@@ -269,11 +332,50 @@ def status():
 
 @app.post("/start-session")
 def start_session():
-    global current_session
+    global current_session, reference_encoding, face_verified, face_comparison_error, face_check_samples
     try:
         from flask import request
         data = request.json
         current_session = data.get("session_code")
+        ref_face_base64 = data.get("reference_face")
+        
+        # Reset state for new session
+        face_verified = None
+        face_comparison_error = None
+        reference_encoding = None
+        face_check_samples = []
+        
+        print(f"[SYSTEM] Starting new session: {current_session}")
+
+        if ref_face_base64 and face_recognition:
+            try:
+                # Remove header if present
+                if "," in ref_face_base64:
+                    ref_face_base64 = ref_face_base64.split(",")[1]
+                
+                img_data = base64.b64decode(ref_face_base64)
+                nparr = np.frombuffer(img_data, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                
+                # Save the image so the developer can easily see what the database sent
+                cv2.imwrite("debug_reference_face.jpg", img)
+                print("[SYSTEM] Saved database image to debug_reference_face.jpg")
+                
+                rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                encodings = face_recognition.face_encodings(rgb_img, num_jitters=2)
+                if encodings:
+                    reference_encoding = encodings[0]
+                    print("[SYSTEM] Reference face encoded successfully.")
+                else:
+                    face_comparison_error = "No face found in reference image"
+                    print(f"[ERROR] {face_comparison_error}")
+            except Exception as e:
+                face_comparison_error = f"Failed to process reference face: {str(e)}"
+                print(f"[ERROR] {face_comparison_error}")
+        elif ref_face_base64 and not face_recognition:
+            face_comparison_error = "face_recognition library not installed"
+            print(f"[ERROR] {face_comparison_error}")
+
         return jsonify({"ok": True, "session": current_session})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -287,10 +389,17 @@ def stats():
         "initialized": initialized,
         "error": last_error,
         "duration": int(time.time() - start_session_time) if start_session_time else 0,
+        "total_frames": total_frames,
         "looking_away_pct": (away_count / safe_total_frames) * 100,
+        "away_count": away_count,
         "phone_detected_pct": (phone_detected_count / safe_total_frames) * 100,
+        "phone_detected_count": phone_detected_count,
         "unauthorized_pct": (unauthorized_person_detected_count / safe_total_frames) * 100,
+        "unauthorized_person_detected_count": unauthorized_person_detected_count,
         "no_person_pct": (no_person_detected_count / safe_total_frames) * 100,
+        "no_person_detected_count": no_person_detected_count,
+        "face_verified": face_verified,
+        "face_comparison_error": face_comparison_error,
     })
 
 

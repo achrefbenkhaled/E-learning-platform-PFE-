@@ -195,11 +195,35 @@ app.post('/api/proctor/report', async (req, res) => {
         summary: req.body?.summary ?? null,
     };
 
-    if (req.body?.session_code && req.body?.proctoringData) {
+    if (req.body?.session_code) {
         try {
-            await TestAttempt.findByIdAndUpdate(req.body.session_code, {
-                proctoringData: req.body.proctoringData
-            });
+            const updateProps = {};
+            
+            // If raw proctoringData is given (react frontend bypassing summary), sync it piece by piece
+            if (req.body.proctoringData) {
+                for (const key in req.body.proctoringData) {
+                    updateProps[`proctoringData.${key}`] = req.body.proctoringData[key];
+                }
+            } 
+            
+            // If we have summary from WPF, map correctly
+            if (req.body.summary) {
+                const s = req.body.summary;
+                if (s.looking_away_percent !== undefined) updateProps['proctoringData.lookingAwayPercent'] = s.looking_away_percent;
+                if (s.phone_detection_percent !== undefined) updateProps['proctoringData.phoneDetectionPercent'] = s.phone_detection_percent;
+                if (s.phone_detected_count !== undefined) updateProps['proctoringData.phoneDetectedCount'] = s.phone_detected_count;
+                if (s.unauthorized_person_percent !== undefined) updateProps['proctoringData.unauthorizedPersonPercent'] = s.unauthorized_person_percent;
+                if (s.unauthorized_person_detected_count !== undefined) updateProps['proctoringData.multiplePersonsCount'] = s.unauthorized_person_detected_count;
+                if (s.no_person_percent !== undefined) updateProps['proctoringData.noPersonPercent'] = s.no_person_percent;
+                if (s.no_person_detected_count !== undefined) updateProps['proctoringData.noPersonCount'] = s.no_person_detected_count;
+                if (s.face_verified !== undefined) updateProps['proctoringData.faceVerified'] = s.face_verified;
+                if (s.face_comparison_error !== undefined) updateProps['proctoringData.faceComparisonError'] = s.face_comparison_error;
+                if (s.away_count !== undefined) updateProps['proctoringData.lookingAwayCount'] = s.away_count;
+            }
+
+            if (Object.keys(updateProps).length > 0) {
+                await TestAttempt.findByIdAndUpdate(req.body.session_code, { $set: updateProps });
+            }
         } catch (err) {
             console.error('Failed to save proctoringData', err);
         }

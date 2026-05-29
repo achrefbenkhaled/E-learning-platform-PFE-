@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, FileText, Link as LinkIcon, Globe, Save, Camera, Sun, Moon, LayoutGrid, KeyRound, Send } from 'lucide-react';
+import { User, Mail, FileText, Link as LinkIcon, Globe, Save, Camera, Sun, Moon, LayoutGrid, KeyRound, Send, ShieldCheck } from 'lucide-react';
 import api from '../../utils/api.js';
 import emailjs from '@emailjs/browser';
 import { validateName, validateUrl } from '../../utils/validators.js';
@@ -7,6 +7,7 @@ import useAuth from '../../hooks/useAuth.js';
 import useAuthStore from '../../context/authStore.js';
 import { useTheme } from '../../context/ThemeContext.jsx';
 import AvatarSelector from '../../components/modals/AvatarSelector.jsx';
+import FaceVerification from '../../components/profile/FaceVerification.jsx';
 
 const Profile = () => {
   const { user } = useAuth();
@@ -187,6 +188,11 @@ const Profile = () => {
           <div className="mb-6 p-3 bg-red-400/10 border border-red-400/20 rounded-xl text-red-400 text-sm">
             {error}
           </div>
+        )}
+
+        {/* Face Verification - Only for students */}
+        {user?.roles?.includes('student') && (
+          <FaceVerification user={user} />
         )}
 
         <form onSubmit={handleSave} className="space-y-6">

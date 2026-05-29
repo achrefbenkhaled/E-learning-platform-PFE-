@@ -1,6 +1,7 @@
 import { Test, TestAttempt } from '../models/Test.js';
 import Course from '../models/Course.js';
 import Enrollment from '../models/Enrollment.js';
+import User from '../models/User.js';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { extractTextFromPdfUrl } from '../utils/pdf.js';
@@ -72,6 +73,8 @@ export const getTests = async (req, res) => {
     // If the user is logged in, show public tests + course tests they are enrolled in
     // If not logged in, only show public tests (courseId: null)
     let query = { status: 'published' };
+    const { page = 1, limit = 10 } = req.query;
+    const skip = (page - 1) * limit;
     
     if (req.userId) {
       // Find courses the user is enrolled in
@@ -245,6 +248,12 @@ export const startTest = async (req, res) => {
     const test = await Test.findById(testId);
     if (!test) return res.status(404).json({ error: 'Test not found' });
 
+    // Face verification check for students
+    const user = await User.findById(req.userId);
+    if (user && user.roles.includes('student') && !user.isFaceVerified) {
+      return res.status(403).json({ error: 'Verification required: You must verify your account with Face ID to take tests. Please visit your profile to verify.' });
+    }
+
     // Enrollment and Block check
     if (test.courseId) {
       const enrollment = await Enrollment.findOne({ userId: req.userId, courseId: test.courseId });
@@ -286,6 +295,7 @@ export const startTest = async (req, res) => {
             testTitle: test.title,
             requireCamera: test.settings?.requireCamera || false,
             requireAntiCheat: test.settings?.requireAntiCheat || false,
+            reference_face: user?.faceData,
             resumed: true
           });
         }
@@ -356,6 +366,7 @@ export const startTest = async (req, res) => {
       testTitle: test.title,
       requireCamera: test.settings?.requireCamera || false,
       requireAntiCheat: test.settings?.requireAntiCheat || false,
+      reference_face: user?.faceData
     });
   } catch (error) {
     console.error('Start test error:', error);
@@ -582,6 +593,27 @@ export const generateTestAI = async (req, res) => {
   } catch (error) {
     console.error('Generate Test AI Error:', error);
     res.status(500).json({ error: error.message || 'Failed to generate test questions' });
+  }
+};
+
+export const updateProctoring = async (req, res) => {
+  try {
+    const { attemptId, proctoringData } = req.body;
+    
+    const attempt = await TestAttempt.findById(attemptId);
+    if (!attempt) return res.status(404).json({ error: 'Attempt not found' });
+
+    for (const key in proctoringData) {
+      if (proctoringData[key] !== undefined) {
+        attempt.set(`proctoringData.${key}`, proctoringData[key]);
+      }
+    }
+
+    await attempt.save();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Update proctoring error:', error);
+    res.status(500).json({ error: 'Failed to update proctoring data' });
   }
 };
 

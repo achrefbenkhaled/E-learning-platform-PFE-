@@ -19,13 +19,13 @@ The system relies on four main pieces working together:
 ## 2. The Step-by-Step Connection Workflow
 
 1. **The Desktop Launcher:** The student opens the WPF Desktop application (`MainWindow.xaml`) and toggles "Enable Anti-Cheat". 
-2. **Session Creation:** The WPF app contacts the local Helper Backend (`express-backend/server.js` -> `/api/anticheat/start`) to generate a unique, secure session token. It also starts the Python AI camera script.
+2. **Session Creation:** The WPF app contacts the local Helper Backend (`express-backend/server.js` -> `/api/anticheat/start`) to generate a unique, secure session token. This token acts as a "passport" that the web browser will later use to authorize the exam handover.
 3. **The Web Browser Request:** The student goes to their normal web browser (Chrome/Edge) and navigates to the course test.
 4. **The Bridge:** The React frontend detects this is an anti-cheat exam. It pings the local Helper Backend (`/api/anticheat/session-token`) to check if the WPF app is running.
 5. **The Handshake:** The student clicks "Start Exam" in the browser. The browser sends a signal containing the `testId` and their authentication tokens to the Helper Backend (`/api/anticheat/request-exam-start`).
 6. **The Lockdown:** The WPF app, which is constantly polling the Helper Backend, sees this request. It immediately launches the `ExamHostWindow.xaml` in full-screen mode, completely locking down the computer.
-7. **The Secure Exam:** Inside the locked window, a WebView opens the test page, injecting the authentication tokens so the student doesn't have to log in again.
-8. **Continuous Monitoring:** As the student takes the test, the Python script watches them via webcam, and the WPF app constantly sends "heartbeats" to the backend to confirm the computer is still locked.
+7. **The Secure Exam:** Inside the locked window, a WebView opens the test page. The WPF app then launches the **AI Proctor (`main.py`)** which begins its initialization (loading YOLO/MediaPipe).
+8. **The Proctor Handshake:** The React frontend sends a `START_PROCTOR` message to the WPF app. The AI proctor calibrates for face position and begins monitoring.
 
 ---
 
@@ -33,11 +33,12 @@ The system relies on four main pieces working together:
 
 ### A. The WPF Desktop App (`anti cheat/wpf-app/`)
 This is the C# Windows application responsible for locking down the OS.
-* **`MainWindow.xaml` / `MainViewModel.cs`**: The UI the user sees first. It handles starting the Python script, toggling the anti-cheat status, polling the helper backend for exam start requests, and managing the overall state.
+* **`MainWindow.xaml` / `MainViewModel.cs`**: The UI the user sees first. It handles toggling the anti-cheat status, environment scanning, polling the helper backend for exam start requests, and managing the overall state.
 * **`ExamHostWindow.xaml` / `ExamHostWindow.xaml.cs`**: The most critical security file. When the exam starts, this window opens full-screen. 
     * **OS Lockdown**: It uses low-level Windows API hooks (`SetWindowsHookEx`) to block keys like `Alt+Tab`, `Windows Key`, `Ctrl+Esc`, etc.
     * **Registry Edits**: It temporarily modifies the Windows Registry to disable the Task Manager and hide the "Log Off" screen.
     * **WebView2**: It embeds a secure Edge browser inside the window that navigates to the exam URL without an address bar.
+    * **Proctor Launch**: It handles launching `main.py` when the exam loads to ensure the camera only turns on inside the secure environment.
     * **Camera Display**: It connects to the Python script's local video feed to show the user their own camera feed.
 
 ### B. The AI Proctor (`anti cheat/main.py`)

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { Clock, HelpCircle, AlertTriangle, ChevronLeft, ChevronRight, Send, WifiOff, Play, Calendar, Lock, Timer, Camera, Shield } from 'lucide-react';
+import { Clock, HelpCircle, AlertTriangle, ChevronLeft, ChevronRight, Send, WifiOff, Play, Calendar, Lock, Timer, Camera, Shield, ShieldCheck, UserX } from 'lucide-react';
 import api from '../../utils/api.js';
 import { API_BASE_URL, ANTICHEAT_BASE_URL } from '../../utils/constants.js';
 import { formatCountdownMs } from '../../utils/helpers.js';
@@ -47,6 +47,8 @@ const TakeTest = () => {
   const [checkingAntiCheat, setCheckingAntiCheat] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
   const [waitingForCamera, setWaitingForCamera] = useState(false);
+  const [verifyingIdentity, setVerifyingIdentity] = useState(false);
+  const [identityFailed, setIdentityFailed] = useState(false);
   const [examLockedByAntiCheat, setExamLockedByAntiCheat] = useState(false);
   const [secureLaunched, setSecureLaunched] = useState(false);
   const [proctorActive, setProctorActive] = useState(false);
@@ -85,7 +87,7 @@ const TakeTest = () => {
           setRequireCamera(true);
         }
       } catch (err) {
-        setError(err.response?.data?.message || 'Failed to load test');
+        setError(err.response?.data?.error || err.response?.data?.message || 'Failed to load test');
       } finally {
         setLoading(false);
       }
@@ -93,10 +95,12 @@ const TakeTest = () => {
     fetchTest();
   }, [testId]);
 
-  // Role & Block check
+  // Role & Block & Verification check
   useEffect(() => {
     if (user && !isStudent) {
       setError('Only users with the Student role can take tests.');
+    } else if (user && isStudent && !user.isFaceVerified) {
+      setError('Verification Required: You must verify your account with Face ID to take tests. Please visit your profile settings or dashboard to verify.');
     } else if (test && test.isBlocked) {
       setError('Your access to this test has been restricted by the instructor.');
     }
@@ -278,17 +282,28 @@ const TakeTest = () => {
     };
   }, [started, attemptId, testId, user]);
 
+  // Assign camera stream to video preview elements
+  useEffect(() => {
+    if (cameraStream && videoRef.current) {
+      videoRef.current.srcObject = cameraStream;
+      videoRef.current.play().catch(e => console.warn("Video play failed", e));
+    }
+  }, [cameraStream]);
+
   // Request camera access
   const requestCamera = async () => {
     try {
       setCameraError('');
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+            width: { ideal: 640 }, 
+            height: { ideal: 480 },
+            facingMode: "user"
+        } 
+      });
       setCameraStream(stream);
       setCameraActive(true);
       setCameraLost(false);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
     } catch (err) {
       setCameraError('Camera access denied. Please allow camera permissions and try again.');
       setCameraActive(false);
@@ -310,6 +325,7 @@ const TakeTest = () => {
   useEffect(() => {
     if (started && cameraStream && miniVideoRef.current) {
       miniVideoRef.current.srcObject = cameraStream;
+      miniVideoRef.current.play().catch(e => console.warn("Mini video play failed", e));
     }
   }, [started, cameraStream]);
 
@@ -408,6 +424,14 @@ const TakeTest = () => {
       const isAutoStart = params.get('autoStart') === 'true';
 
       setLoading(true);
+
+      // Release camera if browser was using it (prevents conflict with local Python proctor)
+      if (test?.settings?.requireAntiCheat && cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null);
+        setCameraActive(false);
+      }
+
       const { data } = await api.post('/api/tests/start', { 
         testId,
         resume: isAutoStart
@@ -448,7 +472,11 @@ const TakeTest = () => {
               await fetch('http://localhost:5050/start-session', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_code: attempt, test_id: testId })
+                body: JSON.stringify({ 
+                  session_code: attempt, 
+                  test_id: testId,
+                  reference_face: data.reference_face || user?.faceData 
+                })
               });
             } catch (e) { /* proctor may not be running in normal browser mode */ }
             setExamLockedByAntiCheat(true);
@@ -472,23 +500,55 @@ const TakeTest = () => {
                     await fetch('http://localhost:5050/start-session', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ session_code: attempt, test_id: testId })
+                      body: JSON.stringify({ 
+                        session_code: attempt, 
+                        test_id: testId,
+                        reference_face: data.reference_face || user?.faceData
+                      })
                     });
                   } catch (e) { console.warn('start-session sync failed'); }
                   
+                  // Now wait for face verification to complete before showing questions
                   setWaitingForCamera(false);
-                  setStarted(true);
-                  resetTimer(durationMs);
-                  startTimer();
-                  localStorage.setItem(
-                    `${ATTEMPT_KEY}_${testId}`,
-                    JSON.stringify({ attemptId: attempt, questions: qs, remainingTime: durationMs })
-                  );
+                  setVerifyingIdentity(true);
+                  
+                  const checkIdentity = async () => {
+                    try {
+                      const statsRes = await fetch('http://localhost:5050/stats');
+                      if (statsRes.ok) {
+                        const statsData = await statsRes.json();
+                        if (statsData.face_verified === true) {
+                          // MATCH — allow into the test
+                          setVerifyingIdentity(false);
+                          setStarted(true);
+                          resetTimer(durationMs);
+                          startTimer();
+                          localStorage.setItem(
+                            `${ATTEMPT_KEY}_${testId}`,
+                            JSON.stringify({ attemptId: attempt, questions: qs, remainingTime: durationMs })
+                          );
+                        } else if (statsData.face_verified === false) {
+                          // MISMATCH — block from taking the test
+                          setVerifyingIdentity(false);
+                          setIdentityFailed(true);
+                        } else {
+                          // Still checking... poll frequently (500ms)
+                          setTimeout(checkIdentity, 500);
+                        }
+                      } else {
+                        setTimeout(checkIdentity, 500);
+                      }
+                    } catch (e) {
+                      setTimeout(checkIdentity, 500);
+                    }
+                  };
+                  checkIdentity();
                 } else {
-                  setTimeout(checkCamera, 1000);
+                  // Fast poll for status (500ms)
+                  setTimeout(checkCamera, 500);
                 }
               } catch (e) {
-                setTimeout(checkCamera, 1000);
+                setTimeout(checkCamera, 500);
               }
             };
             checkCamera();
@@ -509,7 +569,7 @@ const TakeTest = () => {
         JSON.stringify({ attemptId: attempt, questions: qs, remainingTime: durationMs })
       );
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to start test');
+      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to start test');
     } finally {
       setLoading(false);
     }
@@ -542,6 +602,35 @@ const TakeTest = () => {
       // Stop camera before navigating
       if (cameraStream) {
         cameraStream.getTracks().forEach((track) => track.stop());
+      }
+
+      // Fetch proctoring stats from local Python proctor and sync to main backend
+      try {
+        const statsRes = await fetch('http://localhost:5050/stats');
+        if (statsRes.ok) {
+          const stats = await statsRes.json();
+          console.log('[PROCTOR] Stats received:', stats);
+          
+          // Send proctoring data to main backend
+          await api.post('/api/tests/update-proctoring', {
+            attemptId,
+            proctoringData: {
+              lookingAwayPercent: stats.looking_away_pct || 0,
+              lookingAwayCount: stats.away_count || 0,
+              phoneDetectionPercent: stats.phone_detected_pct || 0,
+              phoneDetectedCount: stats.phone_detected_count || 0,
+              unauthorizedPersonPercent: stats.unauthorized_pct || 0,
+              multiplePersonsCount: stats.unauthorized_person_detected_count || 0,
+              noPersonPercent: stats.no_person_pct || 0,
+              noPersonCount: stats.no_person_detected_count || 0,
+              faceVerified: stats.face_verified,
+              faceComparisonError: stats.face_comparison_error,
+            }
+          });
+          console.log('[PROCTOR] Proctoring data synced to database.');
+        }
+      } catch (e) {
+        console.warn('[PROCTOR] Could not fetch/sync proctoring stats:', e.message);
       }
       
       // Auto-stop the anti-cheat session when submitted
@@ -626,6 +715,80 @@ const TakeTest = () => {
   }
 
   // Waiting for camera to initialize (full-screen blocking state)
+  if (verifyingIdentity) {
+    return (
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 text-center overflow-y-auto">
+        <h1 className="text-4xl font-black text-txt mb-2">Identity Verification</h1>
+        <p className="text-txt-muted max-w-md mx-auto leading-relaxed mb-8">
+            Please look directly into the camera lens. The AI is capturing biometric samples to secure your exam session.
+        </p>
+
+        <div className="relative w-full max-w-3xl aspect-video bg-black rounded-[2rem] overflow-hidden border-8 border-indigo-500/20 shadow-[0_0_50px_rgba(99,102,241,0.2)] mb-10 group">
+          <img 
+            src="http://localhost:5050/video_feed" 
+            alt="Biometric Calibration"
+            className="w-full h-full object-cover scale-105"
+            onError={(e) => {
+              e.target.src = 'https://via.placeholder.com/1280x720?text=Initializing+Biometric+Scanner...';
+            }}
+          />
+          
+          {/* Scanning HUD Overlay */}
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute inset-0 border-[60px] border-black/40" />
+            <div className="absolute inset-[60px] border-2 border-indigo-500/50 rounded-[40px]" />
+            
+            {/* Corner Brackets */}
+            <div className="absolute top-20 left-20 w-12 h-12 border-t-4 border-l-4 border-indigo-400 rounded-tl-xl" />
+            <div className="absolute top-20 right-20 w-12 h-12 border-t-4 border-r-4 border-indigo-400 rounded-tr-xl" />
+            <div className="absolute bottom-20 left-20 w-12 h-12 border-b-4 border-l-4 border-indigo-400 rounded-bl-xl" />
+            <div className="absolute bottom-20 right-20 w-12 h-12 border-b-4 border-r-4 border-indigo-400 rounded-br-xl" />
+            
+            {/* Scan Line Animation */}
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-indigo-400 to-transparent shadow-[0_0_15px_rgba(99,102,241,0.8)] animate-[scan_3s_linear_infinite]" />
+          </div>
+
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/60 backdrop-blur-md px-6 py-3 rounded-full border border-white/10">
+            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            <span className="text-white text-xs font-black uppercase tracking-widest">Live Biometric Feed</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center gap-4">
+            <div className="w-16 h-16 bg-indigo-500/10 rounded-2xl flex items-center justify-center animate-pulse border border-indigo-500/20">
+                <ShieldCheck className="w-8 h-8 text-indigo-500" />
+            </div>
+            <div className="flex gap-2">
+                {[1, 2, 3, 4, 5].map(i => (
+                    <div key={i} className="w-3 h-3 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                ))}
+            </div>
+            <p className="text-indigo-400 text-xs font-bold uppercase tracking-widest mt-2">Analyzing Facial Geometry...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (identityFailed) {
+    return (
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-24 h-24 bg-red-500/20 rounded-full flex items-center justify-center mb-6">
+          <UserX className="w-12 h-12 text-red-500" />
+        </div>
+        <h1 className="text-3xl font-black text-txt mb-2">Identity Check Failed</h1>
+        <p className="text-txt-muted max-w-md mx-auto leading-relaxed mb-8">
+          The AI Proctor could not verify your identity. This can happen if the lighting is poor or if someone else is attempting the test.
+        </p>
+        <button 
+          onClick={() => window.location.reload()}
+          className="btn-primary px-8"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
   if (waitingForCamera) {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center px-4 bg-[radial-gradient(circle_at_center,rgba(250,204,21,0.06),transparent_50%)]">
@@ -633,6 +796,13 @@ const TakeTest = () => {
           <div className="bg-surface-card border-2 border-yellow-400/30 rounded-[2rem] p-10 text-center shadow-brutal relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-400/0 via-yellow-400 to-yellow-400/0 animate-pulse" />
             
+            {error && (
+              <div className="mb-6 p-4 bg-red-400/10 border-2 border-red-400/20 rounded-2xl flex items-center gap-3 text-left">
+                <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                <p className="text-sm font-bold text-red-500">{error}</p>
+              </div>
+            )}
+
             <div className="w-20 h-20 bg-yellow-400/10 rounded-full flex items-center justify-center mx-auto mb-6 border-2 border-yellow-400/30 relative">
               <Camera className="w-10 h-10 text-yellow-400" />
               <div className="absolute inset-0 rounded-full border-2 border-yellow-400/20 animate-ping" />
@@ -762,6 +932,12 @@ const TakeTest = () => {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center px-4">
         <div className="bg-surface-card border-2 border-bdr rounded-2xl p-8 max-w-lg w-full text-center">
+          {error && (
+            <div className="mb-6 p-4 bg-red-400/10 border-2 border-red-400/20 rounded-2xl flex items-center gap-3 text-left">
+              <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+              <p className="text-sm font-bold text-red-500">{error}</p>
+            </div>
+          )}
           <div className="w-16 h-16 bg-yellow-400/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <HelpCircle className="w-8 h-8 text-yellow-400" />
           </div>

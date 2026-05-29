@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware, roleCheck } from '../middleware/auth.js';
 import { validateTest } from '../middleware/validate.js';
-import { getTests, getTest, createTest, updateTest, deleteTest, startTest, submitAnswer, submitTest, getAttempt, getMyTests, getMyAttempts, getTestAttempts, generateTestAI } from '../controllers/testController.js';
+import { getTests, getTest, createTest, updateTest, deleteTest, startTest, submitAnswer, submitTest, getAttempt, getMyTests, getMyAttempts, getTestAttempts, generateTestAI, updateProctoring } from '../controllers/testController.js';
 
 const router = Router();
 
@@ -14,6 +14,7 @@ router.post('/generate', authMiddleware, roleCheck('instructor', 'admin'), gener
 router.post('/start', authMiddleware, roleCheck('student'), startTest);
 router.post('/submit-answer', authMiddleware, roleCheck('student'), submitAnswer);
 router.post('/submit-test', authMiddleware, roleCheck('student'), submitTest);
+router.post('/update-proctoring', updateProctoring); // Public/Internal helper access
 router.get('/attempts/:attemptId', authMiddleware, getAttempt);
 
 // Dynamic :testId routes AFTER

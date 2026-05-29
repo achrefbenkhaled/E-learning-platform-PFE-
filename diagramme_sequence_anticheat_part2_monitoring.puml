@@ -1,0 +1,48 @@
+@startuml Sequence_AntiCheat_Part2_Monitoring
+
+skinparam defaultFontName Arial
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 180
+
+title Phase 2 — Surveillance & soumission (simplifié)
+
+actor Étudiant as S
+participant "React\n:5173" as FE
+participant "API\n:5000" as BE
+participant "Helper\n:3001" as Helper
+participant "WPF" as WPF
+participant "Python\n:5050" as CAM
+database MongoDB as DB
+
+== 1. Pendant l'examen ==
+
+loop WPF (heartbeat)
+    WPF -> Helper : POST /anticheat/heartbeat
+    Helper --> WPF : OK
+end
+
+par Surveillance IA (Python)
+    CAM -> CAM : Détecter : regard, visages, téléphone
+end
+
+FE -> CAM : GET /video_feed (aperçu caméra)
+
+== 2. Soumettre ==
+
+S -> FE : « Soumettre »
+FE -> BE : POST /tests/submit-test
+BE -> DB : score + submitted
+FE -> CAM : GET /stats
+FE -> BE : POST /update-proctoring
+FE -> Helper : POST /anticheat/stop
+FE -> WPF : QUIT_EXAM
+
+== 3. Fermeture ==
+
+WPF -> CAM : Arrêter main.py
+WPF -> Helper : POST /proctor/report
+Helper -> DB : proctoringData
+WPF -> WPF : Déverrouiller + fermer fenêtre
+
+@enduml

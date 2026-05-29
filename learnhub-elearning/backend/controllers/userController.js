@@ -178,3 +178,30 @@ export const getPublicProfile = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 };
+
+export const saveFaceVerification = async (req, res) => {
+  try {
+    const { faceData } = req.body;
+    if (!faceData) return res.status(400).json({ error: 'Face data is required' });
+
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.isFaceVerified) {
+      return res.status(400).json({ error: 'Face ID is already verified and permanently locked for security reasons. It cannot be changed.' });
+    }
+
+    user.faceData = faceData;
+    user.isFaceVerified = true;
+    await user.save();
+
+    res.json({ 
+      message: 'Face verification data saved successfully', 
+      isFaceVerified: true,
+      user: user.toJSON()
+    });
+  } catch (error) {
+    console.error('Save face verification error:', error);
+    res.status(500).json({ error: 'Failed to save face verification data' });
+  }
+};

@@ -39,6 +39,14 @@ const UserSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    isFaceVerified: {
+      type: Boolean,
+      default: false,
+    },
+    faceData: {
+      type: String, // Base64 or URL
+      default: null,
+    },
     isActive: {
       type: Boolean,
       default: true,

@@ -1,0 +1,148 @@
+@startuml LearnHub_AntiCheat_Sequence
+title LearnHub Anti-Cheat System — Code-Accurate Sequence Diagram
+
+autonumber
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 150
+skinparam shadowing false
+
+actor Student as S
+participant "WPF Main Window" as WPF
+participant "Express Backend\n(Helper :3001)" as HB
+participant "Python Proctor\n(AI :5050)" as PY
+participant "Web Browser\n(React)" as BR
+participant "Main API Server\n(Node.js)" as API
+database "MongoDB" as DB
+participant "WPF ExamHostWindow\n(Lockdown)" as EHW
+
+== Phase 1 : Setup (WPF App) ==
+
+S -> WPF : Toggle "Enable Anti-Cheat" ON
+
+WPF -> WPF : AntiCheatEnvironmentScanner.Run()
+WPF -> WPF : ViolationProcessTerminator.KillTargets()
+
+WPF -> HB : POST /api/anticheat/start
+HB -->> WPF : { token: "session_id" }
+
+WPF -> WPF : Start Heartbeat Loop (3s)
+WPF -> WPF : Start Pending Exam Polling (1s)
+
+== Phase 2 : Bridge (Web Browser) ==
+
+S -> BR : Open Test Page
+
+BR -> API : GET /api/tests/:testId
+API -->> BR : { requireAntiCheat: true }
+
+loop Every 3 seconds
+    BR -> HB : GET /api/anticheat/session-token
+    HB -->> BR : { ok: true, token: "session_id" }
+    
+    BR -> HB : GET /api/anticheat/status/:token
+    HB -->> BR : { active: true, validToken: true }
+end
+
+BR -> BR : Set Status: "Ready"
+
+== Phase 3 : Handshake & Lockdown ==
+
+S -> BR : Click "Go to Secure Page"
+
+BR -> HB : POST /api/anticheat/request-exam-start\n{ token, testId, accessToken, refreshToken }
+HB -->> BR : { ok: true }
+BR -> BR : setExamLockedByAntiCheat(true)\n(Show placeholder UI)
+
+loop WPF Pending Polling
+    WPF -> HB : GET /api/anticheat/exam-start-pending
+    HB -->> WPF : { pending: true, testId, accessToken, tokens }
+end
+
+WPF -> EHW : new ExamHostWindow(url + tokens)
+activate EHW
+
+EHW -> EHW : ApplyLockdownPolicies() (Registry)
+EHW -> EHW : BlockInput(true) (SetWindowsHookEx)
+EHW -> EHW : AudioMuteManager.MuteOtherApps()
+
+EHW -> EHW : WebView2: Navigate(url)
+EHW -> BR : Load Test Page inside WebView2
+
+== Phase 4 : Secure Exam Start ==
+
+BR -> BR : Detect URL tokens? → SSO Sync\n(Update localStorage & AuthStore)
+
+S -> BR : Click "Start Test" (inside WebView)
+
+BR -> API : POST /api/tests/start { testId, resume: true }
+API -> DB : Create TestAttempt
+DB -->> API : _id
+API -->> BR : { attemptId, questions }
+
+BR -> EHW : window.chrome.webview.postMessage("START_PROCTOR")
+
+EHW -> HB : POST /api/proctor/reset
+EHW -> PY : Process.Start("python main.py")
+activate PY
+
+PY -> PY : Load YOLOv8 + MediaPipe
+PY -> PY : Camera Calibration (2s)
+
+BR -> BR : setWaitingForCamera(true)
+
+loop Until initialized
+    BR -> PY : GET /status
+    PY -->> BR : { running: true, initialized: true }
+end
+
+BR -> PY : POST /start-session\n{ session_code, reference_face: user.faceData }
+PY -->> BR : { ok: true }
+
+BR -> BR : setStarted(true)\n(Show Exam Questions)
+
+== Phase 5 : Monitoring ==
+
+loop Every 3-8 seconds
+    WPF -> HB : POST /api/anticheat/heartbeat
+end
+
+loop Continuous AI Monitoring
+    PY -> PY : Face detect / Pose estimate / Identity Match
+    PY -> PY : YOLO Object detect (Phone)
+    EHW -> PY : Fetch /video_feed (MJPEG)
+    PY -->> EHW : Frame bytes
+    EHW -> EHW : Display camera overlay
+end
+
+== Phase 6 : Submission ==
+
+S -> BR : Click "Submit"
+
+BR -> PY : GET /stats
+PY -->> BR : { face_verified, away_count... }
+BR -> API : POST /api/tests/update-proctoring\n{ attemptId, proctoringData }
+API -> DB : Mongoose $set Update
+
+BR -> API : POST /api/tests/submit-test\n{ attemptId, answers }
+API -> DB : Grade & Save Attempt
+DB -->> API : OK
+API -->> BR : Submission Complete
+
+BR -> HB : POST /api/anticheat/stop { token }
+
+BR -> EHW : postMessage("QUIT_EXAM")
+
+EHW -> PY : Stop Process (via Flag/Kill)
+deactivate PY
+
+PY -> PY : Write summary.json
+
+EHW -> HB : POST /api/proctor/report { stats }
+HB -> DB : Update TestAttempt.proctoringData\n(fallback safe merge via $set)
+
+EHW -> EHW : RestoreLockdownPolicies()
+EHW -> EHW : BlockInput(false) & Unhook
+deactivate EHW
+
+@enduml

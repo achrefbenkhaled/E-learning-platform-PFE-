@@ -1,11 +1,11 @@
 @startuml Diagramme_de_Classe_LearnHub
 
-skinparam classAttributeIconSize 0
 skinparam defaultFontName Arial
 skinparam shadowing false
 skinparam linetype ortho
-skinparam nodesep 80
-skinparam ranksep 70
+skinparam classAttributeIconSize 0
+skinparam nodesep 55
+skinparam ranksep 45
 
 skinparam class {
   BackgroundColor white
@@ -13,260 +13,286 @@ skinparam class {
   ArrowColor black
 }
 
-title LearnHub - E-Learning Class Diagram
+title LearnHub Platform - Class Diagram (Aligned with Models)
 
-' ================= USERS =================
-class User {
-  +id : ObjectId
-  +email : String
-  +firstName : String
-  +lastName : String
-  +avatar : String
-  +roles : String[] {student, instructor, admin}
-  +isVerified : Boolean
-  +isActive : Boolean
-  --
-  +register()
-  +login()
-  +googleLogin()
-  +logout()
-  +getProfile()
-  +updateProfile()
-  +getPublicProfile()
-  +searchUsers()
-  +comparePassword()
+legend right
+Association: --
+Directed Association: -->
+Aggregation: o--
+Composition: *--
+Inheritance (Generalization): --|>
+Realization: ..|>
+Dependency: ..>
+endlegend
+
+package "Users & Access" {
+  class User {
+    +_id: ObjectId
+    +email: String
+    +passwordHash: String
+    +firstName: String
+    +lastName: String
+    +roles: String[] {student|instructor|admin}
+    +isVerified: Boolean
+    +isFaceVerified: Boolean
+    +faceData: String?
+    +isActive: Boolean
+    +resetPasswordToken: String?
+    +resetPasswordExpires: Date?
+    --
+    +comparePassword(password): Boolean
+    +toJSON(): Object
+  }
+
+  class InstructorRequest {
+    +_id: ObjectId
+    +userId: ObjectId
+    +name: String
+    +email: String
+    +reason: String
+    +experience: String
+    +idCard: String
+    +cv: String
+    +diploma: String
+    +status: pending|approved|rejected
+    --
+    +createRequest()
+    +updateRequestStatus()
+  }
+
+  class Notification {
+    +_id: ObjectId
+    +userId: ObjectId
+    +type: enrollment|message|like|comment|system|course_update
+    +title: String
+    +message: String
+    +data: Mixed
+    +link: String
+    +read: Boolean
+    --
+    +markAsRead()
+  }
 }
 
-class InstructorRequest {
-  +id : ObjectId
-  +name : String
-  +email : String
-  +reason : String
-  +experience : String
-  +idCard : String
-  +cv : String
-  +diploma : String
-  +status : {pending, approved, rejected}
-  --
-  +createRequest()
-  +getMyRequest()
-  +getAllRequests()
-  +updateRequestStatus()
+package "Learning" {
+  class Course {
+    +_id: ObjectId
+    +title: String
+    +description: String
+    +categories: String[]
+    +instructor: ObjectId
+    +price: Number
+    +status: draft|published|archived
+    +level: beginner|intermediate|advanced
+    +type: standard|classroom
+    +classCode: String?
+    +finalTestId: ObjectId?
+    --
+    +createCourse()
+    +updateCourse()
+    +addReview()
+  }
+
+  class Session {
+    +_id: ObjectId
+    +courseId: ObjectId
+    +title: String
+    +videoUrl: String
+    +pdfUrl: String?
+    +order: Number
+    +duration: Number
+    +isPublished: Boolean
+    +testId: ObjectId?
+    --
+    +createSession()
+    +updateSession()
+  }
+
+  class Enrollment {
+    +_id: ObjectId
+    +userId: ObjectId
+    +courseId: ObjectId
+    +progress: Number (0..100)
+    +completedSessions: ObjectId[]
+    +status: active|completed|paused
+    +isBlocked: Boolean
+    +certificateEarned: Boolean
+    --
+    +enrollCourse()
+    +toggleBlockStudent()
+  }
 }
 
-class Notification {
-  +id : ObjectId
-  +type : {enrollment, message, like, comment, system, course_update}
-  +title : String
-  +message : String
-  +link : String
-  +read : Boolean
-  --
-  +getNotifications()
-  +markAsRead()
-  +createNotification()
+package "Assessment & Proctoring" {
+  class Test {
+    +_id: ObjectId
+    +title: String
+    +description: String
+    +courseId: ObjectId?
+    +sessionId: ObjectId?
+    +createdBy: ObjectId
+    +type: quiz|final
+    +questions: Question[]
+    +settings: TestSettings
+    +status: draft|published|archived
+    --
+    +createTest()
+    +updateTest()
+    +generateTestAI()
+  }
+
+  class Question <<embedded>> {
+    +_id: ObjectId
+    +type: multiple-choice|short-answer|essay|file-response
+    +question: String
+    +options: String[]
+    +correctAnswer: String?
+    +attachments: Attachment[]
+    +points: Number
+  }
+
+  class Attachment <<embedded>> {
+    +url: String
+    +name: String
+  }
+
+  class TestSettings <<embedded>> {
+    +duration: Number
+    +passingScore: Number
+    +shuffleQuestions: Boolean
+    +showResults: Boolean
+    +scheduledStartTime: Date?
+    +scheduledEndTime: Date?
+    +scheduleWindows: ScheduleWindow[]
+    +openToPublic: Boolean
+    +requireCamera: Boolean
+    +requireAntiCheat: Boolean
+  }
+
+  class ScheduleWindow <<embedded>> {
+    +startTime: Date
+    +endTime: Date
+  }
+
+  class TestAttempt {
+    +_id: ObjectId
+    +testId: ObjectId
+    +userId: ObjectId
+    +responses: Response[]
+    +score: Number
+    +totalPoints: Number
+    +percentage: Number
+    +passed: Boolean
+    +startedAt: Date
+    +submittedAt: Date?
+    +status: in-progress|submitted|completed|graded
+    +sessionId: String?
+    +proctoringData: ProctoringData
+    --
+    +startTest()
+    +submitTest()
+    +updateProctoring()
+  }
+
+  class Response <<embedded>> {
+    +questionId: ObjectId
+    +answer: String
+    +isCorrect: Boolean
+  }
+
+  class ProctoringData <<embedded>> {
+    +lookingAwayCount: Number
+    +phoneDetectedCount: Number
+    +multiplePersonsCount: Number
+    +noPersonCount: Number
+    +lookingAwayPercent: Number
+    +phoneDetectionPercent: Number
+    +unauthorizedPersonPercent: Number
+    +noPersonPercent: Number
+    +faceVerified: Boolean?
+    +faceComparisonError: String?
+  }
 }
 
-' ================= COURSE =================
-class Course {
-  +id : ObjectId
-  +title : String
-  +description : String
-  +categories : String[]
-  +price : Number
-  +status : {draft, published, archived}
-  +level : {beginner, intermediate, advanced}
-  +type : {standard, classroom}
-  +classCode : String
-  +rating : Number
-  +totalEnrollments : Number
-  --
-  +getCourses()
-  +getCourseDetail()
-  +createCourse()
-  +updateCourse()
-  +deleteCourse()
-  +getMyCourses()
-  +addReview()
+package "Community & Moderation" {
+  class CommunityPost {
+    +_id: ObjectId
+    +authorId: ObjectId
+    +title: String
+    +content: String
+    +category: announcement|discussion|question|resource
+    +likes: ObjectId[]
+    +comments: Comment[]
+    +tags: String[]
+    +views: Number
+    +isPinned: Boolean
+    --
+    +createPost()
+    +likePost()
+    +addComment()
+  }
+
+  class Comment <<embedded>> {
+    +_id: ObjectId
+    +postId: ObjectId?
+    +authorId: ObjectId
+    +content: String
+    +likes: ObjectId[]
+  }
+
+  class ChatMessage {
+    +_id: ObjectId
+    +senderId: ObjectId
+    +roomId: String
+    +content: String
+    +attachmentUrl: String?
+    +readBy: ObjectId[]
+    +isDeleted: Boolean
+    --
+    +sendMessage()
+    +markRoomAsRead()
+  }
+
+  class Report {
+    +_id: ObjectId
+    +reporter: ObjectId
+    +reportedUser: ObjectId?
+    +contentType: user|post|comment|chat|course
+    +contentId: ObjectId
+    +reason: Harassment|Spam|Inappropriate Content|Hate Speech|Other
+    +description: String
+    +status: pending|resolved|dismissed
+    --
+    +createReport()
+    +updateReportStatus()
+  }
 }
 
-class Session {
-  +id : ObjectId
-  +title : String
-  +description : String
-  +videoUrl : String
-  +pdfUrl : String
-  +order : Number
-  +duration : Number
-  +isPublished : Boolean
-  --
-  +createSession()
-  +updateSession()
-  +deleteSession()
-  +completeSession()
-}
-
-class Enrollment {
-  +id : ObjectId
-  +enrollmentDate : Date
-  +progress : Number
-  +status : {active, completed, paused}
-  +isBlocked : Boolean
-  +certificateEarned : Boolean
-  --
-  +enrollCourse()
-  +unenrollCourse()
-  +joinClassByCode()
-  +processCheckout()
-  +getEnrolledCourses()
-  +getProgress()
-  +getCourseStudents()
-  +toggleBlockStudent()
-}
-
-' ================= TEST =================
-class Test {
-  +id : ObjectId
-  +title : String
-  +description : String
-  +type : {quiz, final}
-  +status : {draft, published, archived}
-  +totalAttempts : Number
-  --
-  +getTests()
-  +getTest()
-  +createTest()
-  +updateTest()
-  +deleteTest()
-  +getMyTests()
-  +getCourseTests()
-  +generateTestAI()
-}
-
-class Question {
-  <<embedded>>
-  +id : ObjectId
-  +question : String
-  +type : {multiple-choice, short-answer, essay, file-response}
-  +options : String[]
-  +correctAnswer : String
-  +points : Number
-}
-
-class TestAttempt {
-  +id : ObjectId
-  +score : Number
-  +totalPoints : Number
-  +percentage : Number
-  +passed : Boolean
-  +timeTaken : Number
-  +startedAt : Date
-  +submittedAt : Date
-  +status : {in-progress, submitted, completed, graded}
-  --
-  +startTest()
-  +submitAnswer()
-  +submitTest()
-  +getAttempt()
-  +getMyAttempts()
-  +getTestAttempts()
-}
-
-' ================= COMMUNITY =================
-class CommunityPost {
-  +id : ObjectId
-  +title : String
-  +content : String
-  +category : {announcement, discussion, question, resource}
-  +tags : String[]
-  +views : Number
-  +isPinned : Boolean
-  --
-  +getPosts()
-  +getPost()
-  +createPost()
-  +updatePost()
-  +deletePost()
-  +likePost()
-}
-
-class Comment {
-  <<embedded>>
-  +id : ObjectId
-  +content : String
-  --
-  +addComment()
-  +deleteComment()
-}
-
-class ChatMessage {
-  +id : ObjectId
-  +content : String
-  +roomId : String
-  +attachmentUrl : String
-  +isDeleted : Boolean
-  --
-  +getMessages()
-  +getRooms()
-  +markRoomAsRead()
-}
-
-class Report {
-  +id : ObjectId
-  +contentType : {user, post, comment, chat, course}
-  +contentId : ObjectId
-  +reason : {Harassment, Spam, Inappropriate Content, Hate Speech, Other}
-  +description : String
-  +status : {pending, resolved, dismissed}
-  +adminNotes : String
-  --
-  +createReport()
-  +getReports()
-  +updateReportStatus()
-}
-
-' ================= RELATIONS =================
-
-'' User creates courses (Course.instructor -> User)
-User "1" <-- "0..*" Course : instructor
-
-'' Enrollment links User <-> Course (N:M)
-User "1" <-- "0..*" Enrollment
-Course "1" <-- "0..*" Enrollment
-
-'' Course contains sessions
-Course "1" <-- "0..*" Session : courseId
-
-'' Course has an optional final test
+' Core relations
+Course "0..*" --> "1" User : instructor
+Enrollment "0..*" --> "1" User : userId
+Enrollment "0..*" --> "1" Course : courseId
+Session "0..*" --> "1" Course : courseId
 Course "1" -- "0..1" Test : finalTestId
-
-'' Session has an optional quiz
 Session "1" -- "0..1" Test : testId
-
-'' Test created by instructor
-User "1" <-- "0..*" Test : createdBy
-
-'' Test contains embedded questions
+Test "0..*" --> "1" User : createdBy
 Test "1" *-- "1..*" Question
+Question "1" *-- "0..*" Attachment
+Test "1" *-- "1" TestSettings
+TestSettings "1" *-- "0..*" ScheduleWindow
+TestAttempt "0..*" --> "1" Test : testId
+TestAttempt "0..*" --> "1" User : userId
+TestAttempt "1" *-- "0..*" Response
+TestAttempt "1" *-- "1" ProctoringData
 
-'' TestAttempt links User <-> Test
-Test "1" <-- "0..*" TestAttempt : testId
-User "1" <-- "0..*" TestAttempt : userId
-
-'' Community
-User "1" <-- "0..*" CommunityPost : authorId
+' Community relations
+CommunityPost "0..*" --> "1" User : authorId
 CommunityPost "1" *-- "0..*" Comment
-User "1" <-- "0..*" Comment : authorId
-
-'' Chat & notifications
-User "1" <-- "0..*" ChatMessage : senderId
-User "1" <-- "0..*" Notification : userId
-
-'' Reports (reporter + reported user)
-User "1" <-- "0..*" Report : reporter
-User "1" <-- "0..*" Report : reportedUser
-
-'' Instructor requests
-User "1" <-- "0..*" InstructorRequest : userId
+Comment "0..*" --> "1" User : authorId
+ChatMessage "0..*" --> "1" User : senderId
+Notification "0..*" --> "1" User : userId
+Report "0..*" --> "1" User : reporter
+Report "0..*" --> "0..1" User : reportedUser
+InstructorRequest "0..*" --> "1" User : userId
 
 @enduml

@@ -1,0 +1,63 @@
+@startuml Sequence_Creation_Cours
+
+skinparam defaultFontName Arial
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+
+title Diagramme de Séquence — Création d'un Cours
+
+actor Instructeur as I
+participant "Dashboard Instructeur\n(React)" as FE
+participant "Contrôleur Cours\n(Node.js)" as BE
+participant "Modèle Course/Session\n(Mongoose)" as MD
+database "MongoDB" as DB
+
+I -> FE : Cliquer "Créer un nouveau cours"
+FE -> I : Afficher Formulaire (Titre, Catégorie, etc.)
+
+I -> FE : Soumettre les détails du cours
+FE -> BE : POST /api/courses\n{title, description, categories, type, ...}
+note right of BE : Middleware Auth :\nVérifier rôle "instructor"
+
+BE -> BE : Valider les champs obligatoires
+
+alt Type == "classroom"
+    BE -> BE : Générer un code de classe unique (7 chars)
+end
+
+BE -> MD : new Course({...data, instructor: req.userId})
+BE -> MD : course.save()
+MD -> DB : Insert Course
+DB --> MD : OK
+MD --> BE : course object
+
+BE --> FE : 201 Created {course}
+FE --> I : Rediriger vers l'éditeur de cours
+
+== Ajout de Sessions (Leçons) ==
+
+I -> FE : Cliquer "Ajouter une session"
+FE -> I : Afficher Formulaire Session (Titre, Vidéo, PDF, Test)
+
+I -> FE : Soumettre la session
+FE -> BE : POST /api/courses/:id/sessions\n{title, videoUrl, testId, ...}
+
+BE -> MD : Course.findById(:id)
+MD -> DB : Fetch
+DB --> MD : course
+BE -> BE : Vérifier que I est le propriétaire du cours
+
+BE -> MD : Session.create({...data, courseId: :id})
+MD -> DB : Insert Session
+DB --> MD : session
+
+BE -> MD : Recalculer course.totalSessions
+BE -> MD : course.save()
+MD -> DB : Update Course
+DB --> MD : OK
+
+BE --> FE : 201 Created {session}
+FE --> I : Afficher la session dans la liste
+
+@enduml

@@ -1,0 +1,62 @@
+@startuml Sequence_AntiCheat_Part1_Startup
+
+skinparam defaultFontName Arial
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 180
+
+title Phase 1 — Démarrage & verrouillage (simplifié)
+
+actor Étudiant as S
+participant "React\n:5173" as FE
+participant "API\n:5000" as BE
+participant "Helper\n:3001" as Helper
+participant "WPF" as WPF
+participant "Python\n:5050" as CAM
+database MongoDB as DB
+
+== 1. Préparer ==
+
+S -> WPF : Activer Anti-Cheat
+WPF -> Helper : POST /anticheat/start
+Helper --> WPF : token
+
+S -> FE : Ouvrir le test
+FE -> Helper : GET session-token + status
+Helper --> FE : OK → bouton actif
+
+== 2. Fenêtre sécurisée ==
+
+S -> FE : « Go to Secure Page »
+FE -> Helper : POST request-exam-start
+Helper --> FE : OK
+FE -> FE : Onglet normal : attente
+
+WPF -> Helper : GET exam-start-pending
+Helper --> WPF : testId + tokens JWT
+WPF -> WPF : Plein écran + verrouillage OS
+WPF -> FE : WebView2 (examen + SSO)
+
+== 3. Démarrer & vérifier ==
+
+S -> FE : « Start Test » (WebView)
+FE -> BE : POST /tests/start
+BE -> DB : TestAttempt
+BE --> FE : attemptId + reference_face
+
+FE -> WPF : START_PROCTOR
+WPF -> CAM : Lancer main.py
+FE -> CAM : POST /start-session
+
+loop Jusqu'à identité validée
+    FE -> CAM : GET /stats
+    CAM --> FE : face_verified
+end
+
+alt OK
+    FE -> S : Questions + chrono
+else Échec
+    FE -> S : Identity Check Failed
+end
+
+@enduml

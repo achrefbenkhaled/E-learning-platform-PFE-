@@ -75,6 +75,8 @@ const TestAttemptSchema = new mongoose.Schema(
       phoneDetectionPercent: { type: Number, default: 0 },
       unauthorizedPersonPercent: { type: Number, default: 0 },
       noPersonPercent: { type: Number, default: 0 },
+      faceVerified: { type: Boolean, default: null },
+      faceComparisonError: { type: String, default: null },
     },
   },
   { timestamps: true }

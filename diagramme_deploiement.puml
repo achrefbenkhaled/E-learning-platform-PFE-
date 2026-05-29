@@ -1,0 +1,76 @@
+@startuml Diagramme_Deploiement
+
+' ================= Aesthetics =================
+skinparam {
+    defaultFontName "Segoe UI", Arial
+    shadowing false
+    RoundCorner 10
+    Linetype ortho
+    Nodesep 80
+    Ranksep 60
+}
+
+skinparam node {
+    BackgroundColor #F8F9FA
+    BorderColor #ADB5BD
+}
+
+skinparam artifact {
+    BackgroundColor #FFFFFF
+    BorderColor #6C757D
+}
+
+' Zone colors
+node Server #E3F2FD {
+    node "<<Application Server>>\nNode.js / Express" as AppServer {
+        artifact "Rest API" as API
+        artifact "Socket.io" as WSS
+    }
+}
+
+node DatabaseNode #FFF9C4 {
+    database "MongoDB\n(Atlas)" as Mongo
+}
+
+node "Poste Client\n(Étudiant)" as StudentPC #E8F5E9 {
+    node "Browser / WebView2" as Browser {
+        artifact "React App\n(LearnHub UI)" as ReactApp
+    }
+    
+    node "Sécurité (Local)" as SecurityNode #F1F8E9 {
+        component "WPF App\n(Lockdown)" as WPF
+        component "Python IA\n(Proctoring)" as AI
+        component "Helper API\n(Local Server)" as Helper
+    }
+}
+
+node "Poste Client\n(Enseignant)" as AdminPC #F3E5F5 {
+    node "Browser" as AdminBrowser {
+        artifact "React Admin\nDashboard" as AdminApp
+    }
+}
+
+' ================= Connections =================
+
+' Cloud Connections
+AdminApp -down-> API : HTTPS
+ReactApp -down-> API : HTTPS
+API -right-> Mongo : TCP/IP
+
+' Local Interactions (Student)
+ReactApp <-> Helper : localhost:3001
+Helper <-> WPF : Local Logic
+WPF -right-> AI : Start Process
+AI -up-> ReactApp : stats (localhost:5050)
+
+' ================= Notes =================
+note bottom of SecurityNode
+  **Système Anti-Triche Local**
+  • Verrouillage registre/clavier
+  • Analyse IA (Caméra)
+  • Scan environnment
+end note
+
+title Diagramme de Déploiement Simplifié
+
+@enduml

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { gsap } from 'gsap';
-import { BookOpen, TrendingUp, Award, PlusCircle, Search, MessageSquare, ClipboardCheck, ArrowRight, Users, Zap } from 'lucide-react';
+import { BookOpen, TrendingUp, Award, PlusCircle, Search, MessageSquare, ClipboardCheck, ArrowRight, Users, Zap, ShieldAlert } from 'lucide-react';
 import useAuth from '../hooks/useAuth.js';
 import api from '../utils/api.js';
 import InstructorRequestModal from '../components/InstructorRequestModal.jsx';
@@ -113,10 +113,30 @@ const Dashboard = () => {
     <div ref={containerRef}>
       {/* Welcome */}
       <div className="mb-8">
-        <h1 className="text-3xl font-black text-txt">
-          Welcome back, <span className="text-yellow-400">{user?.firstName}</span>
-        </h1>
-        <p className="text-txt-muted mt-1">Here's your learning overview.</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-txt">
+              Welcome back, <span className="text-yellow-400">{user?.firstName}</span>
+            </h1>
+            <p className="text-txt-muted mt-1">Here's your learning overview.</p>
+          </div>
+          {isStudent && !user?.isFaceVerified && (
+            <div className="flex items-center gap-4 p-4 bg-red-400/10 border-2 border-red-400/20 rounded-2xl animate-in fade-in slide-in-from-right duration-500">
+              <div className="w-10 h-10 bg-red-400/20 rounded-xl flex items-center justify-center text-red-400">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-txt">Verification Required</p>
+                <button 
+                  onClick={() => navigate('/settings')}
+                  className="text-xs font-black text-red-400 hover:underline uppercase tracking-wider"
+                >
+                  Verify with Face ID now
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Stats Grid */}

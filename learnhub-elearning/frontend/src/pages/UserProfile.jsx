@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, BookOpen, Calendar, Users, Award, ShieldAlert, Lock } from 'lucide-react';
+import { ArrowLeft, BookOpen, Calendar, Users, Award, ShieldAlert, Lock, Camera } from 'lucide-react';
 import api from '../utils/api.js';
 import { formatDate } from '../utils/helpers.js';
 import useAuth from '../hooks/useAuth.js';
 import ReportModal from '../components/modals/ReportModal.jsx';
+
 
 const UserProfile = () => {
   const { userId } = useParams();
@@ -17,6 +18,8 @@ const UserProfile = () => {
   const [error, setError] = useState('');
   const [showReportModal, setShowReportModal] = useState(false);
   const cardRef = useRef(null);
+
+  const isOwner = currentUser && currentUser._id === (profile?._id || userId);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -90,6 +93,8 @@ const UserProfile = () => {
         </button>
 
         <div ref={cardRef} style={{ opacity: 0 }}>
+
+
           {/* Profile Header Card */}
           <div className="bg-surface-card border-2 border-bdr rounded-2xl p-6 mb-6">
             <div className="flex items-start gap-5">

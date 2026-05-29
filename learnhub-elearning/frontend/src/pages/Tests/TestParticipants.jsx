@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Trophy, Clock, Link2, CheckCircle, XCircle, Eye, Share2, ShieldAlert, Smartphone, UserX, Users2, EyeOff } from 'lucide-react';
+import { ArrowLeft, Users, Trophy, Clock, Link2, CheckCircle, XCircle, Eye, Share2, ShieldAlert, Smartphone, UserX, Users2, EyeOff, ShieldCheck } from 'lucide-react';
 import api from '../../utils/api.js';
 
 const TestParticipants = () => {
@@ -242,7 +242,7 @@ const TestParticipants = () => {
                         <ShieldAlert className="w-4 h-4 text-yellow-400" />
                         <h4 className="text-sm font-bold text-txt-secondary">Anti-Cheat Report</h4>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                         {/* Looking Away */}
                         <div className={`p-3 rounded-xl border flex flex-col gap-1 ${
                           attempt.proctoringData.lookingAwayPercent > 15 
@@ -299,6 +299,26 @@ const TestParticipants = () => {
                           </div>
                           <div className="text-lg font-black">{Math.round(attempt.proctoringData.noPersonPercent || 0)}%</div>
                           <div className="text-[10px] opacity-70">{attempt.proctoringData.noPersonCount || 0} occurrences</div>
+                        </div>
+
+                        {/* Face ID (Identity) */}
+                        <div className={`p-3 rounded-xl border flex flex-col gap-1 ${
+                          attempt.proctoringData.faceVerified === true
+                            ? 'bg-green-400/5 border-green-400/20 text-green-400'
+                            : 'bg-red-400/5 border-red-400/20 text-red-400'
+                        }`}>
+                          <div className="flex items-center gap-1.5 text-xs font-bold mb-1">
+                            <ShieldCheck className="w-3.5 h-3.5" /> 
+                            <span>Identity</span>
+                          </div>
+                          <div className="text-lg font-black">
+                            {attempt.proctoringData.faceVerified === true ? 'MATCH' : 'MISMATCH'}
+                          </div>
+                          <div className="text-[10px] opacity-70">
+                            {attempt.proctoringData.faceVerified === true ? 'Verified' : 
+                             attempt.proctoringData.faceVerified === false ? 'Auth Failed' : 
+                             (attempt.proctoringData.faceComparisonError || 'Verification Error')}
+                          </div>
                         </div>
                       </div>
                     </div>
